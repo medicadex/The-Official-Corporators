@@ -1,0 +1,242 @@
+/* =============================================================================
+   WEALTHBRIDGE MULTIPURPOSE COOPERATIVE SOCIETY LIMITED (WMC)
+   VIZIENT-INSPIRED DESIGN SYSTEM & UI STYLESHEET
+   Official Contact: wealthbridge.coopsociety@gmail.com
+   ============================================================================= */
+
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap');
+
+:root {
+  /* Vizient / Wealthbridge Color Palette */
+  --wmc-navy-950: #071224;
+  --wmc-navy-900: #0b1a30;
+  --wmc-navy-800: #102544;
+  --wmc-navy-700: #1a365d;
+  --wmc-navy-600: #2b4c7e;
+
+  --wmc-gold-600: #b45309;
+  --wmc-gold-500: #d97706;
+  --wmc-gold-400: #f59e0b;
+  --wmc-gold-100: #fef3c7;
+
+  --wmc-emerald-600: #059669;
+  --wmc-emerald-500: #10b981;
+  --wmc-emerald-400: #34d399;
+  --wmc-emerald-50: #ecfdf5;
+
+  --wmc-purple-600: #7c3aed;
+  --wmc-purple-500: #8b5cf6;
+  --wmc-purple-50: #f5f3ff;
+
+  --wmc-slate-900: #0f172a;
+  --wmc-slate-800: #1e293b;
+  --wmc-slate-600: #475569;
+  --wmc-slate-400: #94a3b8;
+  --wmc-slate-200: #e2e8f0;
+  --wmc-slate-100: #f1f5f9;
+  --wmc-slate-50: #f8fafc;
+}
+
+body {
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  background-color: #f8fafc;
+  color: #1e293b;
+  scroll-behavior: smooth;
+}
+
+.font-serif-title {
+  font-family: 'Playfair Display', Georgia, serif;
+}
+
+/* Glassmorphism & Elevation */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  box-shadow: 0 10px 30px -5px rgba(11, 26, 48, 0.05);
+}
+
+.glass-panel-dark {
+  background: rgba(11, 26, 48, 0.85);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Header Gradient */
+.vizient-nav-bg {
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+/* Top utility bar */
+.top-utility-bar {
+  background-color: var(--wmc-navy-950);
+  color: #94a3b8;
+  font-size: 0.75rem;
+}
+
+/* Hero Section */
+.vizient-hero {
+  background: radial-gradient(circle at 80% 20%, rgba(217, 119, 6, 0.08) 0%, transparent 40%),
+              radial-gradient(circle at 20% 80%, rgba(16, 185, 129, 0.08) 0%, transparent 40%),
+              linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+}
+
+/* Vizient Metric Cards */
+.metric-ribbon {
+  background: #ffffff;
+  border-radius: 1.25rem;
+  box-shadow: 0 20px 40px -15px rgba(11, 26, 48, 0.08);
+  border: 1px solid #e2e8f0;
+}
+
+/* Tier Card Hover Physics */
+.tier-card {
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  border: 1px solid #e2e8f0;
+}
+
+.tier-card:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 20px 35px -10px rgba(11, 26, 48, 0.12);
+}
+
+.tier-green {
+  border-top: 4px solid var(--wmc-emerald-500);
+}
+
+.tier-gold {
+  border-top: 4px solid var(--wmc-gold-500);
+}
+
+.tier-purple {
+  border-top: 4px solid var(--wmc-purple-500);
+}
+
+/* Buttons */
+.btn-primary {
+  background-color: var(--wmc-navy-900);
+  color: #ffffff;
+  transition: all 0.2s ease;
+}
+
+.btn-primary:hover {
+  background-color: var(--wmc-navy-700);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(11, 26, 48, 0.2);
+}
+
+.btn-accent {
+  background: linear-gradient(135deg, var(--wmc-gold-500) 0%, var(--wmc-gold-400) 100%);
+  color: #071224;
+  font-weight: 700;
+  transition: all 0.2s ease;
+}
+
+.btn-accent:hover {
+  background: linear-gradient(135deg, var(--wmc-gold-600) 0%, var(--wmc-gold-500) 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(217, 119, 6, 0.3);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Range Slider Styling */
+input[type="range"] {
+  accent-color: var(--wmc-gold-500);
+}
+
+/* Animations */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.4s ease-out forwards;
+}
+
+/* KYC Profile Center & Governance Styling */
+.kyc-pillar-complete {
+  background-color: rgba(16, 185, 129, 0.15) !important;
+  border-color: rgba(16, 185, 129, 0.4) !important;
+}
+.kyc-pillar-complete .pillar-status {
+  color: #34d399 !important;
+}
+.kyc-pillar-pending {
+  background-color: rgba(15, 23, 42, 0.7) !important;
+  border-color: rgba(51, 65, 85, 0.6) !important;
+}
+.diff-old {
+  background-color: #fee2e2;
+  color: #991b1b;
+  text-decoration: line-through;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.diff-new {
+  background-color: #dcfce7;
+  color: #166534;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+/* Print Media Stylesheet for Statutory Statements */
+@media print {
+  body {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+  }
+  .top-utility-bar,
+  header,
+  footer,
+  #portal-personal-section,
+  #portal-executive-section,
+  #portal-reports-section > .glass-panel,
+  #portal-view-switcher,
+  #nav-portal-btn,
+  .modal,
+  button {
+    display: none !important;
+  }
+  #member-portal-view {
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+  }
+  #portal-reports-section {
+    display: block !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  #report-statement-canvas {
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+  }
+}
+
