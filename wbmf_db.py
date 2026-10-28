@@ -11,6 +11,7 @@ Document Reference: SOP-WMC-2026-V1 & WMC-BYELAWS-REV-2026-V1
 
 import os
 import sys
+import re
 import json
 import hashlib
 import secrets
@@ -21,6 +22,13 @@ from typing import Dict, List, Any, Optional
 from dotenv import load_dotenv
 import mysql.connector
 from mysql.connector import errorcode
+
+try:
+    import psycopg2
+    import psycopg2.extras
+    PSYCOPG2_AVAILABLE = True
+except ImportError:
+    PSYCOPG2_AVAILABLE = False
 
 # Load environment configuration from .env file
 load_dotenv(override=True)
@@ -202,6 +210,138 @@ ROLE_PERMISSIONS: Dict[str, List[str]] = {
 }
 
 
+# -----------------------------------------------------------------------------
+# DUAL DATABASE ADAPTER (SUPABASE POSTGRESQL & MYSQL COMPATIBILITY LAYER)
+# -----------------------------------------------------------------------------
+def translate_mysql_to_postgres(sql: str) -> str:
+    """Translates MySQL SQL dialect into standard PostgreSQL dialect seamlessly."""
+    if not sql:
+        return sql
+    # Strip MySQL backticks
+    clean = sql.replace('`', '')
+    # Translate CURDATE() to CURRENT_DATE
+    clean = re.sub(r'\bCURDATE\(\)', 'CURRENT_DATE', clean, flags=re.IGNORECASE)
+    # Translate DATE_ADD(..., INTERVAL %s MONTH)
+    clean = re.sub(
+        r'DATE_ADD\(\s*CURRENT_DATE\s*,\s*INTERVAL\s+(%s|\d+)\s+MONTH\s*\)',
+        r"(CURRENT_DATE + ((\1)::text || ' month')::interval)::date",
+        clean,
+        flags=re.IGNORECASE
+    )
+    clean = re.sub(
+        r'DATE_ADD\(\s*CURRENT_DATE\s*,\s*INTERVAL\s+(%s|\d+)\s+DAY\s*\)',
+        r"(CURRENT_DATE + ((\1)::text || ' day')::interval)::date",
+        clean,
+        flags=re.IGNORECASE
+    )
+    # Translate is_active = 1 / 0
+    clean = re.sub(r'\bis_active\s*=\s*1\b', 'is_active = TRUE', clean)
+    clean = re.sub(r'\bis_active\s*=\s*0\b', 'is_active = FALSE', clean)
+    # Translate ON DUPLICATE KEY UPDATE occurrences
+    if "ON DUPLICATE KEY UPDATE approved_at = approved_at" in clean:
+        clean = clean.replace("ON DUPLICATE KEY UPDATE approved_at = approved_at;", "ON CONFLICT DO NOTHING;")
+    if "ON DUPLICATE KEY UPDATE assigned_by_user_id = VALUES(assigned_by_user_id), assigned_at = NOW()" in clean:
+        clean = clean.replace(
+            "ON DUPLICATE KEY UPDATE assigned_by_user_id = VALUES(assigned_by_user_id), assigned_at = NOW();",
+            "ON CONFLICT (member_id, role_id) DO UPDATE SET assigned_by_user_id = EXCLUDED.assigned_by_user_id, assigned_at = NOW();"
+        )
+    return clean
+
+
+class PostgresCursorWrapper:
+    """Wraps psycopg2 cursor to mirror mysql.connector dict cursor and lastrowid behavior."""
+    def __init__(self, raw_cursor, conn_wrapper):
+        self._cur = raw_cursor
+        self._conn_wrapper = conn_wrapper
+        self.lastrowid = None
+
+    def execute(self, query, vars=None):
+        clean_sql = translate_mysql_to_postgres(query)
+        if vars is not None:
+            clean_sql = re.sub(r'(?<!%)%(?!%|s)', '%%', clean_sql)
+        is_insert = clean_sql.strip().upper().startswith("INSERT INTO")
+        has_id = "role_permissions" not in clean_sql.lower()
+        if is_insert and has_id and "RETURNING" not in clean_sql.upper():
+            clean_sql_returning = clean_sql.rstrip().rstrip(";") + " RETURNING id;"
+            try:
+                self._cur.execute(clean_sql_returning, vars)
+                row = self._cur.fetchone()
+                if row:
+                    self.lastrowid = row["id"] if isinstance(row, dict) else row[0]
+                return
+            except Exception:
+                self.lastrowid = None
+                self._cur.execute(clean_sql, vars)
+                return
+        self._cur.execute(clean_sql, vars)
+
+    def executemany(self, query, vars_list):
+        clean_sql = translate_mysql_to_postgres(query)
+        return self._cur.executemany(clean_sql, vars_list)
+
+    def fetchone(self):
+        return self._cur.fetchone()
+
+    def fetchall(self):
+        return self._cur.fetchall()
+
+    def fetchmany(self, size=None):
+        return self._cur.fetchmany(size)
+
+    @property
+    def rowcount(self):
+        return self._cur.rowcount
+
+    @property
+    def description(self):
+        return self._cur.description
+
+    def close(self):
+        return self._cur.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+
+class PostgresConnectionWrapper:
+    """Wraps psycopg2 connection to mirror mysql.connector interface and autocommit behavior."""
+    def __init__(self, raw_conn):
+        self._conn = raw_conn
+        self._conn.autocommit = True
+
+    def cursor(self, dictionary=True, buffered=True):
+        raw_cur = self._conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor if dictionary else None)
+        return PostgresCursorWrapper(raw_cur, self)
+
+    def commit(self):
+        try:
+            self._conn.commit()
+        except Exception:
+            pass
+
+    def rollback(self):
+        try:
+            self._conn.rollback()
+        except Exception:
+            pass
+
+    def close(self):
+        try:
+            self._conn.close()
+        except Exception:
+            pass
+
+    def ping(self, reconnect=True, attempts=1, delay=0):
+        return True
+
+    @property
+    def is_connected(self):
+        return not self._conn.closed
+
+
 class WealthbridgeDB:
     """Enterprise Database Connector and RBAC Controller for Wealthbridge Cooperative."""
 
@@ -212,9 +352,50 @@ class WealthbridgeDB:
         self.password = os.getenv("DB_PASSWORD")
         self.database = os.getenv("DB_NAME", "wbmf")
         self.official_email = os.getenv("OFFICIAL_EMAIL", "wealthbridge.coopsociety@gmail.com")
+        self.database_url = os.getenv("SUPABASE_DB_URL") or os.getenv("DATABASE_URL", "")
+        self.is_postgres = bool(
+            (self.database_url and (self.database_url.startswith("postgres://") or self.database_url.startswith("postgresql://")))
+            or os.getenv("DB_ENGINE", "").lower() in ["postgres", "postgresql", "supabase"]
+        )
 
     def get_connection(self):
-        """Creates and returns a connection to MySQL."""
+        """Creates and returns a connection to Supabase PostgreSQL or MySQL."""
+        if self.is_postgres:
+            if not PSYCOPG2_AVAILABLE:
+                raise RuntimeError("psycopg2 is required for Supabase PostgreSQL connection.")
+            pg_url = self.database_url
+            if not pg_url or not (pg_url.startswith("postgres://") or pg_url.startswith("postgresql://")):
+                pg_host = os.getenv("SUPABASE_POOLER_HOST", "aws-1-eu-west-1.pooler.supabase.com")
+                pg_port = int(os.getenv("DB_PORT", "5432"))
+                pg_user = os.getenv("DB_USER", "postgres.pdbirqjqcsuhdmzbtyel")
+                pg_pass = os.getenv("DB_PASSWORD", "Adavize@2026")
+                pg_name = os.getenv("DB_NAME", "postgres")
+                pg_url = f"postgresql://{pg_user}:{pg_pass}@{pg_host}:{pg_port}/{pg_name}?sslmode=require"
+
+            # Resilient Dual-Port Strategy: Primary port with fast 7s timeout, fallback to alternate pooler port
+            urls_to_try = [pg_url]
+            if ":5432" in pg_url:
+                urls_to_try.append(pg_url.replace(":5432", ":6543"))
+            elif ":6543" in pg_url:
+                urls_to_try.append(pg_url.replace(":6543", ":5432"))
+
+            last_error = None
+            for url in urls_to_try:
+                try:
+                    raw_conn = psycopg2.connect(url, connect_timeout=7)
+                    return PostgresConnectionWrapper(raw_conn)
+                except Exception as e:
+                    last_error = e
+                    endpoint_label = url.split('@')[-1] if '@' in url else 'endpoint'
+                    print(f"[WARN] Supabase connection attempt failed on {endpoint_label}: {e}")
+
+            print(f"[ERROR] All Supabase PostgreSQL connection attempts failed: {last_error}")
+            raise RuntimeError(
+                "Cooperative servers are temporarily unreachable. Please check your internet connection "
+                "and try again in a few moments, or contact the Secretariat (wealthbridge.coopsociety@gmail.com)."
+            ) from last_error
+
+        # Fallback to MySQL
         if not self.password:
             raise RuntimeError("DB_PASSWORD must be set in the environment.")
         try:
@@ -267,6 +448,9 @@ class WealthbridgeDB:
                 if not verify_password(password, stored_hash):
                     raise ValueError("Incorrect password for administrator account.")
 
+                is_default_admin = password in ("Pass123*", "Wealthbridge@2026")
+                must_change = bool(admin_user.get("must_change_password") or is_default_admin)
+
                 cursor.execute("UPDATE admin_users SET last_login = NOW() WHERE id = %s;", (admin_user["id"],))
                 conn.commit()
 
@@ -301,6 +485,7 @@ class WealthbridgeDB:
                         "employment_status": "DEVELOPER",
                         "contribution_tier": "NONE",
                         "membership_status": "SYSTEM_ADMINISTRATOR",
+                        "must_change_password": must_change,
                         "kyc_completion_percent": 100,
                         "contact_change_status": "NONE",
                         "admission_date": None,
@@ -336,6 +521,8 @@ class WealthbridgeDB:
             stored_hash = member.get("password_hash")
             if not verify_password(password, stored_hash):
                 raise ValueError("Incorrect password. Please verify your credentials.")
+
+            is_default = bool(password in ("Wealthbridge@2026", "Pass123*", DEFAULT_INITIAL_PASSWORD) or member.get("must_change_password", False))
 
             # Record login timestamp
             cursor.execute("UPDATE members SET last_login = NOW() WHERE id = %s;", (member["id"],))
@@ -450,6 +637,7 @@ class WealthbridgeDB:
                     "bank_account_name": member.get("bank_account_name"),
                     "contribution_tier": member["contribution_tier"],
                     "membership_status": member["membership_status"],
+                    "must_change_password": is_default,
                     "kyc_completion_percent": full_kyc_pct,
                     "kyc_breakdown": kyc_info["breakdown"],
                     "contact_change_status": member.get("contact_change_status") or "NONE",
@@ -498,7 +686,7 @@ class WealthbridgeDB:
         cursor = conn.cursor(dictionary=True)
         try:
             cursor.execute("""
-                SELECT id, member_code, email, first_name, last_name, status AS membership_status
+                SELECT id, member_code, email, first_name, last_name, status AS membership_status, must_change_password
                 FROM members
                 WHERE id = %s
                 LIMIT 1;
@@ -572,6 +760,7 @@ class WealthbridgeDB:
                 "membership_status": member["membership_status"],
                 "primary_role": primary_role,
                 "is_executive": is_exec,
+                "must_change_password": bool(member.get("must_change_password", False)),
                 "roles": sorted(set(roles)),
                 "permissions": sorted(permissions),
             }
@@ -579,14 +768,29 @@ class WealthbridgeDB:
             cursor.close()
             conn.close()
 
-    def change_password(self, member_id: int, old_password: str, new_password: str) -> Dict[str, Any]:
-        """Allows an authenticated member to update their access password."""
-        if len(new_password) < 12:
-            raise ValueError("New password must be at least 12 characters long.")
+    def change_password(self, member_id: Any, old_password: str, new_password: str) -> Dict[str, Any]:
+        """Allows an authenticated member or administrator to update their access password."""
+        if len(new_password) < 8:
+            raise ValueError("New password must be at least 8 characters long.")
 
         conn = self.get_connection()
         cursor = conn.cursor(dictionary=True)
         try:
+            # Check if administrator account (e.g. 'admin-1')
+            if isinstance(member_id, str) and member_id.startswith("admin-"):
+                admin_id = int(member_id.split("-")[1])
+                cursor.execute("SELECT password_hash FROM admin_users WHERE id = %s;", (admin_id,))
+                row = cursor.fetchone()
+                if not row:
+                    raise ValueError("Admin account not found.")
+                if not verify_password(old_password, row.get("password_hash")):
+                    raise ValueError("Current password does not match.")
+                new_hash = hash_password(new_password)
+                cursor.execute("UPDATE admin_users SET password_hash = %s, must_change_password = FALSE WHERE id = %s;", (new_hash, admin_id))
+                conn.commit()
+                return {"status": "SUCCESS", "message": "Administrator password updated successfully."}
+
+            # Normal cooperator member
             cursor.execute("SELECT password_hash FROM members WHERE id = %s;", (member_id,))
             row = cursor.fetchone()
             if not row:
@@ -596,7 +800,8 @@ class WealthbridgeDB:
                 raise ValueError("Current password does not match.")
 
             new_hash = hash_password(new_password)
-            cursor.execute("UPDATE members SET password_hash = %s WHERE id = %s;", (new_hash, member_id))
+            cursor.execute("UPDATE members SET password_hash = %s, must_change_password = FALSE WHERE id = %s;", (new_hash, member_id))
+            conn.commit()
             return {"status": "SUCCESS", "message": "Password updated successfully."}
         finally:
             cursor.close()
@@ -1060,6 +1265,69 @@ class WealthbridgeDB:
             cursor.close()
             conn.close()
 
+    def get_active_signatories(self) -> Dict[str, Any]:
+        """
+        Dynamically resolves authorized executive signatories (President and General Secretary)
+        for official cooperator ID cards, certificates, and legal resolutions.
+        Resolution Hierarchy:
+        1. Query active officer appointed in the officers table (portfolio = 'PRESIDENT' / 'GENERAL_SECRETARY').
+        2. Fallback to system_config parameters ('PRESIDENT_NAME', 'GENERAL_SECRETARY_NAME').
+        """
+        cfg = self.get_system_config()
+        pres_fallback = cfg.get("PRESIDENT_NAME", "Qazeem Adebowale")
+        sec_fallback = cfg.get("GENERAL_SECRETARY_NAME", "Olaleke Olaoye")
+        pres_sig_path = cfg.get("PRESIDENT_SIGNATURE_PATH", "")
+        sec_sig_path = cfg.get("GENERAL_SECRETARY_SIGNATURE_PATH", "")
+
+        conn = self.get_connection()
+        cursor = conn.cursor(dictionary=True)
+        try:
+            # Query President
+            cursor.execute("""
+                SELECT m.id, m.member_code, m.first_name, m.last_name, m.passport_photo
+                FROM officers o
+                JOIN members m ON o.member_id = m.id
+                WHERE o.portfolio = 'PRESIDENT' AND o.is_active = TRUE
+                LIMIT 1;
+            """)
+            pres_row = cursor.fetchone()
+
+            # Query General Secretary
+            cursor.execute("""
+                SELECT m.id, m.member_code, m.first_name, m.last_name, m.passport_photo
+                FROM officers o
+                JOIN members m ON o.member_id = m.id
+                WHERE o.portfolio = 'GENERAL_SECRETARY' AND o.is_active = TRUE
+                LIMIT 1;
+            """)
+            sec_row = cursor.fetchone()
+
+            pres_name = f"{pres_row['first_name']} {pres_row['last_name']}".strip() if pres_row else pres_fallback
+            pres_code = pres_row["member_code"] if pres_row else "WMC-PRES"
+
+            sec_name = f"{sec_row['first_name']} {sec_row['last_name']}".strip() if sec_row else sec_fallback
+            sec_code = sec_row["member_code"] if sec_row else "WMC-SEC"
+
+            return {
+                "president": {
+                    "name": pres_name,
+                    "title": "President & Chairman",
+                    "member_code": pres_code,
+                    "signature_path": pres_sig_path,
+                    "is_officer_assigned": bool(pres_row)
+                },
+                "general_secretary": {
+                    "name": sec_name,
+                    "title": "General Secretary",
+                    "member_code": sec_code,
+                    "signature_path": sec_sig_path,
+                    "is_officer_assigned": bool(sec_row)
+                }
+            }
+        finally:
+            cursor.close()
+            conn.close()
+
     def update_system_config_item(self, config_key: str, new_value: str, updated_by_user_id: Optional[int] = None) -> Dict[str, Any]:
         """
         Updates a statutory system configuration constant in MySQL system_config table.
@@ -1092,6 +1360,23 @@ class WealthbridgeDB:
                     raise ValueError("Monthly due day must be between 1 and 31.")
             except ValueError:
                 raise ValueError("Monthly due day must be an integer between 1 and 31.")
+
+        # Validation for bank charges configuration parameters
+        if clean_key in ("BANK_DEBIT_CAMF_RATE", "BANK_DEBIT_STAMP_DUTY_FEE", "BANK_DEBIT_STAMP_DUTY_THRESHOLD", "BANK_DEBIT_VAT_RATE", "BANK_DEBIT_TRANSFER_FEE"):
+            try:
+                num = float(clean_val)
+                if num < 0:
+                    raise ValueError(f"Parameter '{clean_key}' cannot be negative.")
+            except ValueError:
+                raise ValueError(f"Parameter '{clean_key}' must be a valid numerical value.")
+
+        if clean_key == "BANK_DEBIT_CHARGES_BEARER":
+            if clean_val.upper() not in ("SOCIETY", "RECIPIENT"):
+                raise ValueError("Parameter 'BANK_DEBIT_CHARGES_BEARER' must be either 'SOCIETY' or 'RECIPIENT'.")
+
+        if clean_key == "BANK_CREDIT_CHARGES_ENABLED":
+            if clean_val not in ("0", "1", "true", "false", "TRUE", "FALSE"):
+                raise ValueError("Parameter 'BANK_CREDIT_CHARGES_ENABLED' must be 0 (Disabled) or 1 (Enabled).")
 
         conn = self.get_connection()
         cursor = conn.cursor(dictionary=True)
@@ -1126,6 +1411,48 @@ class WealthbridgeDB:
             cursor.close()
             conn.close()
 
+    def calculate_bank_debit_charges(self, gross_amount: Any) -> Dict[str, Any]:
+        """
+        Dynamically calculates Polaris Bank corporate debit/outflow charges based on active system_config:
+        - CAMF (Current Account Maintenance Fee): e.g. 0.1% (0.001)
+        - Electronic Stamp Duty Levy: e.g. NGN 50.00 (if gross_amount >= threshold, e.g. NGN 10,000)
+        - VAT on Bank Charges / Stamp Duty: e.g. 7.5%
+        - Outward NIP Transfer Network Fee: e.g. NGN 10.00
+        Returns detailed breakdown and net payout amount.
+        """
+        amt = Decimal(str(gross_amount))
+        cfg = self.get_system_config()
+
+        camf_rate = Decimal(str(cfg.get("BANK_DEBIT_CAMF_RATE", "0.001")))
+        stamp_duty_fee = Decimal(str(cfg.get("BANK_DEBIT_STAMP_DUTY_FEE", "50.00")))
+        stamp_duty_threshold = Decimal(str(cfg.get("BANK_DEBIT_STAMP_DUTY_THRESHOLD", "10000.00")))
+        vat_rate = Decimal(str(cfg.get("BANK_DEBIT_VAT_RATE", "0.075")))
+        transfer_fee = Decimal(str(cfg.get("BANK_DEBIT_TRANSFER_FEE", "10.00")))
+        bearer = cfg.get("BANK_DEBIT_CHARGES_BEARER", "SOCIETY").upper()
+
+        camf_amount = (amt * camf_rate).quantize(Decimal("0.01"))
+        stamp_duty = stamp_duty_fee if amt >= stamp_duty_threshold else Decimal("0.00")
+        vat_amount = ((stamp_duty + camf_amount) * vat_rate).quantize(Decimal("0.01"))
+        total_bank_charges = (camf_amount + stamp_duty + vat_amount + transfer_fee).quantize(Decimal("0.01"))
+
+        if bearer == "RECIPIENT":
+            net_payout = amt - total_bank_charges
+        else:
+            net_payout = amt
+
+        return {
+            "gross_amount": float(amt),
+            "camf_rate_percent": float(camf_rate * 100),
+            "camf_amount": float(camf_amount),
+            "stamp_duty_amount": float(stamp_duty),
+            "vat_rate_percent": float(vat_rate * 100),
+            "vat_amount": float(vat_amount),
+            "transfer_fee": float(transfer_fee),
+            "total_bank_charges": float(total_bank_charges),
+            "charges_bearer": bearer,
+            "net_payout_to_recipient": float(net_payout),
+            "total_debit_from_polaris": float(amt + (Decimal("0.00") if bearer == "RECIPIENT" else total_bank_charges))
+        }
 
     # -------------------------------------------------------------------------
     # 3. MEMBERSHIP & REGISTRATION SERVICES
@@ -1165,7 +1492,7 @@ class WealthbridgeDB:
                 o.portfolio AS executive_portfolio,
                 COALESCE(sh.units_held, 0) AS share_units,
                 COALESCE(sh.paid_up_amount, 0.00) AS share_equity_paid,
-                COALESCE(sh.benefits_qualified, 0) AS benefits_qualified,
+                COALESCE(sh.benefits_qualified, FALSE) AS benefits_qualified,
                 COALESCE(sv.total_balance, 0.00) AS savings_balance,
                 COALESCE(wf.cumulative_contributions, 0.00) AS welfare_balance,
                 nok.full_name AS nok_name,
@@ -1496,7 +1823,7 @@ class WealthbridgeDB:
             default_password = DEFAULT_INITIAL_PASSWORD or "Wealthbridge@2026"
             pwd_hash = hash_password(default_password)
 
-            cursor.execute("UPDATE members SET password_hash = %s WHERE id = %s;", (pwd_hash, member_id))
+            cursor.execute("UPDATE members SET password_hash = %s, must_change_password = TRUE WHERE id = %s;", (pwd_hash, member_id))
             conn.commit()
 
             return {
@@ -1616,6 +1943,8 @@ class WealthbridgeDB:
             # Password setup - default to 'Wealthbridge@2026' if not provided
             plain_pass = str(member_data.get("password") or "").strip() or "Wealthbridge@2026"
             pwd_hash = hash_password(plain_pass)
+            is_custom_pw = bool(plain_pass and plain_pass not in ("Wealthbridge@2026", "Pass123*", DEFAULT_INITIAL_PASSWORD))
+            must_change = not is_custom_pw
 
             # 5. Insert New Member
             insert_query = """
@@ -1623,12 +1952,12 @@ class WealthbridgeDB:
                     member_code, first_name, last_name, other_names, email, password_hash, phone, 
                     gender, residential_address, identification_type, identification_number, 
                     employment_status, employer_or_business_name, monthly_income_verified, 
-                    contribution_tier, status, admission_date
+                    contribution_tier, status, admission_date, must_change_password
                 ) VALUES (
                     %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s,
                     %s, %s, %s,
-                    %s, 'PENDING_KYC', CURDATE()
+                    %s, 'PENDING_KYC', CURDATE(), %s
                 );
             """
             cursor.execute(insert_query, (
@@ -1647,6 +1976,7 @@ class WealthbridgeDB:
                 member_data.get("employer_or_business_name") or "Self/Corporate",
                 Decimal(str(member_data.get("monthly_income_verified") or 0.00)),
                 member_data.get("contribution_tier") or "STANDARD",
+                must_change,
             ))
             new_id = cursor.lastrowid
 
@@ -1768,8 +2098,8 @@ class WealthbridgeDB:
             cursor.execute("""
                 SELECT 
                     COUNT(*) AS total_members,
-                    SUM(CASE WHEN status = 'ACTIVE' THEN 1 ELSE 0 END) AS active_members,
-                    SUM(CASE WHEN status = 'PENDING_KYC' THEN 1 ELSE 0 END) AS pending_kyc_members
+                    COALESCE(SUM(CASE WHEN status = 'ACTIVE' THEN 1 ELSE 0 END), 0) AS active_members,
+                    COALESCE(SUM(CASE WHEN status = 'PENDING_KYC' THEN 1 ELSE 0 END), 0) AS pending_kyc_members
                 FROM members;
             """)
             m_stats = cursor.fetchone()
@@ -1816,9 +2146,9 @@ class WealthbridgeDB:
                 "society_name": "Wealthbridge Multipurpose Cooperative Society Limited",
                 "official_email": self.official_email,
                 "membership": {
-                    "total": int(m_stats["total_members"]),
-                    "active": int(m_stats["active_members"]),
-                    "pending_kyc": int(m_stats["pending_kyc_members"])
+                    "total": int(m_stats["total_members"] or 0),
+                    "active": int(m_stats["active_members"] or 0),
+                    "pending_kyc": int(m_stats["pending_kyc_members"] or 0)
                 },
                 "financial_pools": {
                     "total_assets_under_management": float(total_coop_assets),
@@ -2399,14 +2729,48 @@ class WealthbridgeDB:
                 target_id, member_id, wdr_amt, new_bal, ref, narr
             ))
 
+            chg = self.calculate_bank_debit_charges(wdr_amt)
+            tot_chg = Decimal(str(chg["total_bank_charges"]))
+            chg_bearer = chg["charges_bearer"]
+            camf_val = Decimal(str(chg["camf_amount"]))
+            stamp_val = Decimal(str(chg["stamp_duty_amount"]))
+            vat_val = Decimal(str(chg["vat_amount"]))
+            trf_val = Decimal(str(chg["transfer_fee"]))
+
+            charges_str = (
+                f" [Polaris Bank Charges: NGN {tot_chg:,.2f} (CAMF 0.1%: NGN {camf_val:,.2f}, "
+                f"Stamp Duty: NGN {stamp_val:,.2f}, VAT 7.5%: NGN {vat_val:,.2f}, NIP: NGN {trf_val:,.2f}) borne by {chg_bearer}]"
+            )
+            full_ts_narr = f"{narr}{charges_str}"
+
             tx_ref = f"TX-TSW-{int(time.time()*1000)}-{secrets.token_hex(4).upper()}"
             cursor.execute("""
                 INSERT INTO transactions
                 (transaction_ref, member_id, transaction_type, ledger_category, amount, payment_method, channel_reference, narration, status)
                 VALUES (%s, %s, 'DEBIT', 'SAVINGS', %s, 'POLARIS_BANK_TRANSFER', %s, %s, 'VERIFIED');
             """, (
-                tx_ref, member_id, wdr_amt, ref, narr[:250]
+                tx_ref, member_id, wdr_amt, ref, full_ts_narr[:500]
             ))
+
+            je_ts_lines = [
+                {"account_code": "2020", "line_type": "DEBIT", "amount": wdr_amt, "memo": f"Target Savings Matured Payout ({target['title']})"}
+            ]
+            if chg_bearer == "SOCIETY" and tot_chg > 0:
+                je_ts_lines.append({"account_code": "5010", "line_type": "DEBIT", "amount": tot_chg, "memo": "Polaris Bank CAMF/Stamp Duty/VAT on Target Savings Payout"})
+                je_ts_lines.append({"account_code": "1010", "line_type": "CREDIT", "amount": wdr_amt + tot_chg, "memo": "Polaris Bank Outflow for Target Savings Payout"})
+            else:
+                je_ts_lines.append({"account_code": "1010", "line_type": "CREDIT", "amount": wdr_amt, "memo": "Polaris Bank Outflow for Target Savings Payout"})
+
+            self._post_journal_entry_with_cursor(
+                cursor=cursor,
+                entry_date=date.today(),
+                source_module='TARGET_SAVINGS_WITHDRAWAL',
+                source_reference=tx_ref,
+                narration=f"Target Savings Matured Payout for {target['title']}",
+                lines=je_ts_lines,
+                created_by=member_id,
+                status='POSTED'
+            )
 
             conn.commit()
 
@@ -2789,7 +3153,7 @@ class WealthbridgeDB:
             cursor.execute("""
                 SELECT amount_welfare
                 FROM payment_advices
-                WHERE member_id = %s AND admin_notes LIKE '%[PERMANENT_COMMITMENT]%'
+                WHERE member_id = %s AND admin_notes LIKE '%%[PERMANENT_COMMITMENT]%%'
                 ORDER BY id DESC
                 LIMIT 1;
             """, (member_id,))
@@ -3162,14 +3526,20 @@ class WealthbridgeDB:
                     f"TXN-WLF-{member_id}-{ts_batch}", member_id, Decimal(str(alloc_welfare)),
                     clean_method, ref, f"Welfare Solidarity Pool Levy (Adv #{adv_row['advice_reference']})"
                 ))
-                cursor.execute("""
-                    INSERT INTO welfare_accounts (member_id, cumulative_contributions, consecutive_months_active, last_contribution_date)
-                    VALUES (%s, %s, 1, CURDATE())
-                    ON DUPLICATE KEY UPDATE
-                        cumulative_contributions = cumulative_contributions + VALUES(cumulative_contributions),
-                        consecutive_months_active = consecutive_months_active + 1,
-                        last_contribution_date = CURDATE();
-                """, (member_id, Decimal(str(alloc_welfare))))
+                cursor.execute("SELECT id FROM welfare_accounts WHERE member_id = %s;", (member_id,))
+                if cursor.fetchone():
+                    cursor.execute("""
+                        UPDATE welfare_accounts
+                        SET cumulative_contributions = cumulative_contributions + %s,
+                            consecutive_months_active = consecutive_months_active + 1,
+                            last_contribution_date = CURRENT_DATE
+                        WHERE member_id = %s;
+                    """, (Decimal(str(alloc_welfare)), member_id))
+                else:
+                    cursor.execute("""
+                        INSERT INTO welfare_accounts (member_id, cumulative_contributions, consecutive_months_active, last_contribution_date)
+                        VALUES (%s, %s, 1, CURRENT_DATE);
+                    """, (member_id, Decimal(str(alloc_welfare))))
 
             # 4. Post Share Capital
             if alloc_shares > 0:
@@ -3185,15 +3555,22 @@ class WealthbridgeDB:
                     f"TXN-SHR-{member_id}-{ts_batch}", member_id, Decimal(str(alloc_shares)),
                     clean_method, ref, f"Share Capital Equity Subscription ({new_units} units)"
                 ))
-                cursor.execute("""
-                    INSERT INTO share_accounts (member_id, units_held, paid_up_amount, is_minimum_met, benefits_qualified)
-                    VALUES (%s, %s, %s, (%s >= 5), (%s >= 5))
-                    ON DUPLICATE KEY UPDATE
-                        units_held = units_held + %s,
-                        paid_up_amount = paid_up_amount + VALUES(paid_up_amount),
-                        is_minimum_met = (units_held >= 5),
-                        benefits_qualified = (units_held >= 5);
-                """, (member_id, new_units, Decimal(str(alloc_shares)), new_units, new_units, new_units))
+                cursor.execute("SELECT id, units_held FROM share_accounts WHERE member_id = %s;", (member_id,))
+                sh_acc = cursor.fetchone()
+                if sh_acc:
+                    cursor.execute("""
+                        UPDATE share_accounts
+                        SET units_held = units_held + %s,
+                            paid_up_amount = paid_up_amount + %s,
+                            is_minimum_met = ((units_held + %s) >= 5),
+                            benefits_qualified = ((units_held + %s) >= 5)
+                        WHERE member_id = %s;
+                    """, (new_units, Decimal(str(alloc_shares)), new_units, new_units, member_id))
+                else:
+                    cursor.execute("""
+                        INSERT INTO share_accounts (member_id, units_held, paid_up_amount, is_minimum_met, benefits_qualified)
+                        VALUES (%s, %s, %s, (%s >= 5), (%s >= 5));
+                    """, (member_id, new_units, Decimal(str(alloc_shares)), new_units, new_units))
 
             # 5. Post Regular Savings (Advised Savings + 100% of Surplus)
             total_savings_to_credit = alloc_savings + alloc_surplus
@@ -3212,12 +3589,18 @@ class WealthbridgeDB:
                     f"TXN-SAV-{member_id}-{ts_batch}", member_id, Decimal(str(total_savings_to_credit)),
                     clean_method, ref, narr_sav
                 ))
-                cursor.execute("""
-                    INSERT INTO savings_accounts (member_id, total_balance, encumbered_balance)
-                    VALUES (%s, %s, 0.00)
-                    ON DUPLICATE KEY UPDATE
-                        total_balance = total_balance + VALUES(total_balance);
-                """, (member_id, Decimal(str(total_savings_to_credit))))
+                cursor.execute("SELECT id FROM savings_accounts WHERE member_id = %s;", (member_id,))
+                if cursor.fetchone():
+                    cursor.execute("""
+                        UPDATE savings_accounts
+                        SET total_balance = total_balance + %s
+                        WHERE member_id = %s;
+                    """, (Decimal(str(total_savings_to_credit)), member_id))
+                else:
+                    cursor.execute("""
+                        INSERT INTO savings_accounts (member_id, total_balance, encumbered_balance)
+                        VALUES (%s, %s, 0.00);
+                    """, (member_id, Decimal(str(total_savings_to_credit))))
 
             # 6. Post Target Savings
             if alloc_targets > 0:
@@ -4529,15 +4912,35 @@ class WealthbridgeDB:
             if not role:
                 raise ValueError("Role not found.")
 
+            clean_assigned_by = None
+            if assigned_by is not None:
+                try:
+                    if isinstance(assigned_by, str) and assigned_by.startswith("admin-"):
+                        clean_assigned_by = int(assigned_by.split("-")[1])
+                    else:
+                        clean_assigned_by = int(assigned_by)
+                except (ValueError, TypeError):
+                    clean_assigned_by = None
+
             cursor.execute("""
-                INSERT INTO member_roles (member_id, role_id, assigned_by_user_id)
-                VALUES (%s, %s, %s)
-                ON DUPLICATE KEY UPDATE assigned_by_user_id = VALUES(assigned_by_user_id), assigned_at = NOW();
-            """, (member_id, role_id, assigned_by))
+                SELECT id FROM member_roles WHERE member_id = %s AND role_id = %s;
+            """, (member_id, role_id))
+            existing_role = cursor.fetchone()
+            if existing_role:
+                cursor.execute("""
+                    UPDATE member_roles 
+                    SET assigned_by_user_id = %s, assigned_at = NOW() 
+                    WHERE id = %s;
+                """, (clean_assigned_by, existing_role["id"]))
+            else:
+                cursor.execute("""
+                    INSERT INTO member_roles (member_id, role_id, assigned_by_user_id, assigned_at)
+                    VALUES (%s, %s, %s, NOW());
+                """, (member_id, role_id, clean_assigned_by))
             conn.commit()
 
             self.log_audit_event(
-                user_id=assigned_by,
+                user_id=clean_assigned_by,
                 actor_name="Administrator",
                 actor_role="SUPER_ADMIN",
                 action="ROLE_ASSIGNED",
@@ -4563,8 +4966,18 @@ class WealthbridgeDB:
             cursor.close()
             conn.close()
 
-    def revoke_role_from_member(self, member_id: int, role_id: int, revoked_by: int = None) -> Dict[str, Any]:
+    def revoke_role_from_member(self, member_id: int, role_id: int, revoked_by: Any = None) -> Dict[str, Any]:
         """Revokes a role assignment from a cooperator."""
+        clean_revoked_by = None
+        if revoked_by is not None:
+            try:
+                if isinstance(revoked_by, str) and revoked_by.startswith("admin-"):
+                    clean_revoked_by = int(revoked_by.split("-")[1])
+                else:
+                    clean_revoked_by = int(revoked_by)
+            except (ValueError, TypeError):
+                clean_revoked_by = None
+
         conn = self.get_connection()
         cursor = conn.cursor(dictionary=True)
         try:
@@ -4574,7 +4987,7 @@ class WealthbridgeDB:
             conn.commit()
 
             self.log_audit_event(
-                user_id=revoked_by,
+                user_id=clean_revoked_by,
                 actor_name="Administrator",
                 actor_role="SUPER_ADMIN",
                 action="ROLE_REVOKED",
@@ -4933,6 +5346,18 @@ class WealthbridgeDB:
         if action not in ("APPROVE", "DECLINE"):
             raise ValueError("Action must be either APPROVE or DECLINE.")
 
+        if isinstance(officer_id, str):
+            if officer_id.startswith("admin-"):
+                try:
+                    officer_id = int(officer_id.split("-")[1])
+                except Exception:
+                    officer_id = 1
+            else:
+                try:
+                    officer_id = int(officer_id)
+                except Exception:
+                    officer_id = 1
+
         conn = self.get_connection()
         cursor = conn.cursor(dictionary=True)
         try:
@@ -5081,6 +5506,20 @@ class WealthbridgeDB:
                     """, (loan_id, i, due_d, due_amt))
 
                 t_ref = f"DISB-{loan['loan_reference']}"
+                p_amt = Decimal(str(loan["principal_amount"]))
+                chg = self.calculate_bank_debit_charges(p_amt)
+                tot_chg = Decimal(str(chg["total_bank_charges"]))
+                chg_bearer = chg["charges_bearer"]
+                camf_val = Decimal(str(chg["camf_amount"]))
+                stamp_val = Decimal(str(chg["stamp_duty_amount"]))
+                vat_val = Decimal(str(chg["vat_amount"]))
+                trf_val = Decimal(str(chg["transfer_fee"]))
+
+                disb_narr = (
+                    f"Loan disbursement for {loan['loan_reference']} via Polaris Bank. "
+                    f"Bank Debit Charges: NGN {tot_chg:,.2f} (CAMF 0.1%: NGN {camf_val:,.2f}, Stamp Duty: NGN {stamp_val:,.2f}, VAT: NGN {vat_val:,.2f}, NIP: NGN {trf_val:,.2f}) borne by {chg_bearer}."
+                )
+
                 cursor.execute("""
                     INSERT INTO transactions (
                         transaction_ref, member_id, transaction_type, ledger_category,
@@ -5091,7 +5530,16 @@ class WealthbridgeDB:
                         %s, 'POLARIS_BANK_TRANSFER', %s, 'VERIFIED',
                         %s, CURDATE()
                     );
-                """, (t_ref, loan["member_id"], loan["principal_amount"], f"Loan disbursement for {loan['loan_reference']}", officer_id))
+                """, (t_ref, loan["member_id"], p_amt, disb_narr[:500], officer_id))
+
+                je_lines = [
+                    {"account_code": "1030", "line_type": "DEBIT", "amount": p_amt, "memo": f"Member Loan Principal Facilities Receivable ({loan['loan_reference']})"}
+                ]
+                if chg_bearer == "SOCIETY" and tot_chg > 0:
+                    je_lines.append({"account_code": "5010", "line_type": "DEBIT", "amount": tot_chg, "memo": f"Polaris Bank CAMF/Stamp Duty/VAT on Loan Disbursement ({loan['loan_reference']})"})
+                    je_lines.append({"account_code": "1010", "line_type": "CREDIT", "amount": p_amt + tot_chg, "memo": f"Gross Outflow from Polaris Escrow ({loan['loan_reference']})"})
+                else:
+                    je_lines.append({"account_code": "1010", "line_type": "CREDIT", "amount": p_amt, "memo": f"Disbursement payout via Polaris Bank Escrow ({loan['loan_reference']})"})
 
                 self._post_journal_entry_with_cursor(
                     cursor=cursor,
@@ -5099,10 +5547,7 @@ class WealthbridgeDB:
                     source_module='LOAN_DISBURSEMENT',
                     source_reference=t_ref,
                     narration=f"Loan Facility Disbursement for {loan['loan_reference']}",
-                    lines=[
-                        {"account_code": "1030", "line_type": "DEBIT", "amount": loan["principal_amount"], "memo": "Member Loan Principal Facilities Receivable"},
-                        {"account_code": "1010", "line_type": "CREDIT", "amount": loan["principal_amount"], "memo": "Disbursement payout via Polaris Bank Escrow"}
-                    ],
+                    lines=je_lines,
                     created_by=officer_id,
                     approved_by=officer_id,
                     status='POSTED'
@@ -5822,6 +6267,29 @@ class WealthbridgeDB:
                 );
             """, (t_ref, member_id, ledger, dec_amt, narration.strip(), officer_id))
 
+            gl_target_map = {
+                "SAVINGS": ("2010", "Direct Member Regular Savings Deposit"),
+                "SHARE_CAPITAL": ("3010", "Direct Share Capital Subscription"),
+                "WELFARE_FUND": ("2030", "Direct Welfare Solidarity Contribution"),
+                "LOAN_REPAYMENT": ("1030", "Direct Loan Principal Amortization")
+            }
+            gl_target_code, gl_target_memo = gl_target_map.get(ledger, ("2010", "Direct Member Credit"))
+
+            self._post_journal_entry_with_cursor(
+                cursor=cursor,
+                entry_date=date.today(),
+                source_module='DIRECT_MEMBER_CREDIT',
+                source_reference=t_ref,
+                narration=f"Direct Credit for {member['member_code']} ({ledger})",
+                lines=[
+                    {"account_code": "1010", "line_type": "DEBIT", "amount": dec_amt, "memo": f"Direct Deposit into Polaris Escrow ({ledger})"},
+                    {"account_code": gl_target_code, "line_type": "CREDIT", "amount": dec_amt, "memo": gl_target_memo}
+                ],
+                created_by=officer_id,
+                approved_by=officer_id,
+                status='POSTED'
+            )
+
             conn.commit()
 
             self.log_audit_event(
@@ -5843,6 +6311,188 @@ class WealthbridgeDB:
                 "category": ledger,
                 "transaction_ref": t_ref,
                 "message": f"Successfully credited NGN {dec_amt:,.2f} to {member['first_name']} {member['last_name']} ({ledger})."
+            }
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            cursor.close()
+            conn.close()
+
+    def record_direct_member_debit(
+        self,
+        member_id: int,
+        officer_id: int,
+        officer_role: str,
+        amount: float,
+        debit_category: str,
+        narration: str,
+        bank_details: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Direct executive debit & outward disbursement desk for Financial Secretary, Treasurer, and President.
+        Allows disbursing funds / payouts from ordinary savings, target savings, or welfare grants with dynamic
+        Polaris Bank debit charges calculated (CAMF 0.1%, Stamp Duty NGN 50, VAT 7.5%, NIP transfer fee).
+        Posts zero-variance double-entry journal entries to the General Ledger.
+        """
+        if amount <= 0:
+            raise ValueError("Debit payout amount must be greater than zero.")
+        if not narration or len(narration.strip()) < 5:
+            raise ValueError("A statutory audit narration is required for direct debit payout.")
+
+        category = debit_category.upper().strip()
+        allowed = ("SAVINGS", "ORDINARY_SAVINGS", "REGULAR_SAVINGS", "WELFARE_GRANT", "DIVIDEND_PAYOUT", "TARGET_SAVINGS")
+        if category not in allowed:
+            raise ValueError(f"Category must be one of: {', '.join(allowed)}")
+
+        conn = self.get_connection()
+        cursor = conn.cursor(dictionary=True)
+        try:
+            cursor.execute("SELECT id, member_code, first_name, last_name, status FROM members WHERE id = %s;", (member_id,))
+            member = cursor.fetchone()
+            if not member:
+                raise ValueError("Member not found.")
+
+            dec_amt = Decimal(str(amount))
+            t_ref = f"DIR-DB-{secrets.token_hex(5).upper()}"
+
+            # Calculate dynamic bank charges
+            charges = self.calculate_bank_debit_charges(dec_amt)
+            tot_charges = Decimal(str(charges["total_bank_charges"]))
+            camf_val = Decimal(str(charges["camf_amount"]))
+            stamp_val = Decimal(str(charges["stamp_duty_amount"]))
+            vat_val = Decimal(str(charges["vat_amount"]))
+            trf_val = Decimal(str(charges["transfer_fee"]))
+            bearer = charges["charges_bearer"]
+            net_payout = Decimal(str(charges["net_payout_to_recipient"]))
+
+            # Verify balance and encumbrance if debiting savings
+            if category in ("SAVINGS", "ORDINARY_SAVINGS", "REGULAR_SAVINGS"):
+                cursor.execute("""
+                    SELECT total_balance, encumbered_balance 
+                    FROM savings_accounts 
+                    WHERE member_id = %s FOR UPDATE;
+                """, (member_id,))
+                sav = cursor.fetchone()
+                if not sav:
+                    raise ValueError("Member savings account not found.")
+                tot_bal = Decimal(str(sav["total_balance"]))
+                enc_bal = Decimal(str(sav["encumbered_balance"]))
+                avail_bal = max(Decimal("0.00"), tot_bal - enc_bal)
+
+                if dec_amt > avail_bal:
+                    raise ValueError(
+                        f"Insufficient unencumbered savings balance. Available: NGN {avail_bal:,.2f} "
+                        f"(Total: NGN {tot_bal:,.2f}, Encumbered/Loan Collateral: NGN {enc_bal:,.2f})."
+                    )
+
+                cursor.execute("""
+                    UPDATE savings_accounts
+                    SET total_balance = total_balance - %s
+                    WHERE member_id = %s;
+                """, (dec_amt, member_id))
+                ledger = "SAVINGS"
+                gl_debit_acct = "2010"
+
+            elif category == "TARGET_SAVINGS":
+                cursor.execute("""
+                    SELECT id, title, current_balance, status 
+                    FROM target_savings_accounts 
+                    WHERE member_id = %s AND current_balance >= %s 
+                    ORDER BY id DESC LIMIT 1 FOR UPDATE;
+                """, (member_id, dec_amt))
+                ts_rec = cursor.fetchone()
+                if not ts_rec:
+                    raise ValueError(f"No active target savings account with sufficient balance (NGN {dec_amt:,.2f}) found.")
+                new_ts_bal = Decimal(str(ts_rec["current_balance"])) - dec_amt
+                cursor.execute("UPDATE target_savings_accounts SET current_balance = %s WHERE id = %s;", (new_ts_bal, ts_rec["id"]))
+                ledger = "TARGET_SAVINGS"
+                gl_debit_acct = "2020"
+
+            elif category == "WELFARE_GRANT":
+                ledger = "WELFARE_GRANT"
+                gl_debit_acct = "2030"
+
+            else:
+                ledger = "SAVINGS"
+                gl_debit_acct = "2010"
+
+            bank_str = ""
+            if bank_details:
+                b_bank = bank_details.get("bank_name", "")
+                b_num = bank_details.get("account_number", "")
+                if b_bank or b_num:
+                    bank_str = f" [Payout to {b_bank} {b_num}]"
+
+            charges_memo = (
+                f"Bank Debit Charges: NGN {tot_charges:,.2f} (CAMF 0.1%: NGN {camf_val:,.2f}, "
+                f"Stamp Duty: NGN {stamp_val:,.2f}, VAT 7.5%: NGN {vat_val:,.2f}, NIP: NGN {trf_val:,.2f}) borne by {bearer}."
+            )
+            full_narr = f"{narration.strip()}{bank_str}. {charges_memo}"
+
+            cursor.execute("""
+                INSERT INTO transactions (
+                    transaction_ref, member_id, transaction_type, ledger_category,
+                    amount, payment_method, narration, status,
+                    verified_by_officer_id, transaction_date
+                ) VALUES (
+                    %s, %s, 'DEBIT', %s,
+                    %s, 'POLARIS_BANK_TRANSFER', %s, 'VERIFIED',
+                    %s, CURDATE()
+                );
+            """, (t_ref, member_id, ledger, dec_amt, full_narr[:500], officer_id))
+
+            je_lines = [
+                {"account_code": gl_debit_acct, "line_type": "DEBIT", "amount": dec_amt, "memo": f"Direct Debit Outflow ({ledger})"}
+            ]
+            if bearer == "SOCIETY" and tot_charges > 0:
+                je_lines.append({"account_code": "5010", "line_type": "DEBIT", "amount": tot_charges, "memo": "Polaris CAMF/Stamp Duty/VAT on Direct Payout"})
+                je_lines.append({"account_code": "1010", "line_type": "CREDIT", "amount": dec_amt + tot_charges, "memo": "Polaris Escrow Debit Payout + Charges"})
+            else:
+                je_lines.append({"account_code": "1010", "line_type": "CREDIT", "amount": dec_amt, "memo": "Polaris Escrow Debit Payout"})
+
+            self._post_journal_entry_with_cursor(
+                cursor=cursor,
+                entry_date=date.today(),
+                source_module='DIRECT_DEBIT_DISBURSEMENT',
+                source_reference=t_ref,
+                narration=f"Direct Debit Outflow for {member['member_code']} - {ledger}",
+                lines=je_lines,
+                created_by=officer_id,
+                approved_by=officer_id,
+                status='POSTED'
+            )
+
+            conn.commit()
+
+            self.log_audit_event(
+                user_id=officer_id,
+                actor_name="Executive Officer",
+                actor_role=officer_role,
+                action="DIRECT_MEMBER_DEBIT",
+                resource_type="MEMBER_ACCOUNT",
+                resource_id=str(member_id),
+                details_before=None,
+                details_after={
+                    "category": ledger,
+                    "gross_amount": float(dec_amt),
+                    "net_payout": float(net_payout),
+                    "bank_charges": charges,
+                    "narration": full_narr
+                },
+                summary=f"Direct debit of NGN {dec_amt:,.2f} ({ledger}) from {member['member_code']} via Polaris Bank."
+            )
+
+            return {
+                "status": "SUCCESS",
+                "member_id": member_id,
+                "gross_amount": float(dec_amt),
+                "category": ledger,
+                "transaction_ref": t_ref,
+                "bank_charges": charges,
+                "net_payout": float(net_payout),
+                "total_outflow_from_polaris": float(charges["total_debit_from_polaris"]),
+                "message": f"Successfully disbursed NGN {dec_amt:,.2f} from {member['first_name']} {member['last_name']} ({ledger}). Net payout: NGN {net_payout:,.2f} (Bank charges: NGN {tot_charges:,.2f})."
             }
         except Exception:
             conn.rollback()
@@ -6647,7 +7297,14 @@ class WealthbridgeDB:
             if fin_off > 0:
                 je_exit_lines.append({"account_code": "4040", "line_type": "CREDIT", "amount": fin_off, "memo": "Outstanding Disciplinary Fines Offset"})
             if net_ref > 0:
-                je_exit_lines.append({"account_code": "1010", "line_type": "CREDIT", "amount": net_ref, "memo": "Net Settlement Payout via Polaris Bank"})
+                chg = self.calculate_bank_debit_charges(net_ref)
+                tot_chg = Decimal(str(chg["total_bank_charges"]))
+                chg_bearer = chg["charges_bearer"]
+                if chg_bearer == "SOCIETY" and tot_chg > 0:
+                    je_exit_lines.append({"account_code": "5010", "line_type": "DEBIT", "amount": tot_chg, "memo": "Polaris Bank Debit Charges on Cooperator Exit Settlement"})
+                    je_exit_lines.append({"account_code": "1010", "line_type": "CREDIT", "amount": net_ref + tot_chg, "memo": "Net Settlement Payout & Bank Charges via Polaris Bank"})
+                else:
+                    je_exit_lines.append({"account_code": "1010", "line_type": "CREDIT", "amount": net_ref, "memo": "Net Settlement Payout via Polaris Bank"})
 
             if len(je_exit_lines) >= 2:
                 self._post_journal_entry_with_cursor(
@@ -6780,7 +7437,7 @@ class WealthbridgeDB:
                 cursor.execute("""
                     INSERT INTO share_accounts (member_id, paid_up_amount, units_held, benefits_qualified)
                     VALUES (%s, %s, %s, %s);
-                """, (new_id, open_shares, share_units, 1 if share_units >= 5 else 0))
+                """, (new_id, open_shares, share_units, bool(share_units >= 5)))
 
                 cursor.execute("""
                     INSERT INTO welfare_accounts (member_id, cumulative_contributions)
@@ -6949,7 +7606,7 @@ class WealthbridgeDB:
             );
         """, (
             entry_num, e_date, source_module, source_reference, narration,
-            tot_debit, tot_credit, 1 if is_balanced else 0, status, created_by,
+            tot_debit, tot_credit, bool(is_balanced), status, created_by,
             approved_by, datetime.now() if status == 'POSTED' and approved_by else None,
             supporting_doc_url
         ))
@@ -7835,7 +8492,7 @@ class WealthbridgeDB:
                 Decimal(str(simulation_data["net_surplus_amount"])), Decimal(str(simulation_data["statutory_reserve_percent"])), Decimal(str(simulation_data["statutory_reserve_amount"])),
                 Decimal(str(simulation_data["distributable_pool_amount"])), Decimal(str(simulation_data["weight_share_capital_percent"])), Decimal(str(simulation_data["weight_savings_volume_percent"])),
                 Decimal(str(simulation_data["weight_patronage_percent"])), simulation_data["min_share_units_required"], simulation_data["min_active_months_required"],
-                1 if simulation_data["disqualify_active_arrears"] else 0, simulation_data["summary"]["total_qualified_members"], simulation_data["summary"]["total_disqualified_members"],
+                bool(simulation_data["disqualify_active_arrears"]), simulation_data["summary"]["total_qualified_members"], simulation_data["summary"]["total_disqualified_members"],
                 officer_id
             ))
             period_id = cursor.lastrowid
@@ -7856,7 +8513,7 @@ class WealthbridgeDB:
                 """, (
                     period_id, a["member_id"], a["shares_held"], Decimal(str(a["share_equity_amount"])),
                     Decimal(str(a["savings_balance"])), Decimal(str(a["loan_patronage_volume"])),
-                    1 if a["is_qualified"] else 0, a["disqualification_reason"],
+                    bool(a["is_qualified"]), a["disqualification_reason"],
                     Decimal(str(a["dividend_from_shares"])), Decimal(str(a["dividend_from_savings"])),
                     Decimal(str(a["dividend_from_patronage"])), Decimal(str(a["total_dividend_payable"])),
                     a["payout_preference"]
@@ -8197,7 +8854,7 @@ class WealthbridgeDB:
                     FROM loans l
                     JOIN loan_repayments lr ON l.id = lr.loan_id
                     WHERE l.member_id = %s AND l.status = 'ACTIVE' AND lr.status != 'PAID' AND lr.due_date < CURDATE()
-                    GROUP BY l.id;
+                    GROUP BY l.id, l.loan_reference, l.outstanding_balance;
                 """, (user_id,))
                 borrower_loans = cursor.fetchall()
                 for bl in borrower_loans:
@@ -8226,7 +8883,7 @@ class WealthbridgeDB:
                     JOIN loan_repayments lr ON l.id = lr.loan_id
                     WHERE lg.guarantor_member_id = %s AND lg.status = 'ACCEPTED' AND l.status = 'ACTIVE'
                       AND lr.status != 'PAID' AND lr.due_date < CURDATE()
-                    GROUP BY l.id, lg.id;
+                    GROUP BY l.id, lg.id, l.loan_reference, l.outstanding_balance, lg.guaranteed_amount, m.first_name, m.last_name;
                 """, (user_id,))
                 guar_loans = cursor.fetchall()
                 for gl in guar_loans:
@@ -8291,8 +8948,8 @@ class WealthbridgeDB:
                     LEFT JOIN savings_accounts sva ON m.id = sva.member_id
                     JOIN loan_repayments lr ON l.id = lr.loan_id
                     WHERE l.status = 'ACTIVE' AND lr.status != 'PAID' AND lr.due_date < CURDATE()
-                    GROUP BY l.id
-                    HAVING days_overdue >= 90;
+                    GROUP BY l.id, l.loan_reference, l.outstanding_balance, m.first_name, m.last_name, m.member_code, sva.total_balance
+                    HAVING DATEDIFF(CURDATE(), MIN(lr.due_date)) >= 90;
                 """)
                 severe_loans = cursor.fetchall()
                 for sl in severe_loans:
@@ -8334,7 +8991,7 @@ class WealthbridgeDB:
                 JOIN members m ON l.member_id = m.id
                 JOIN loan_repayments lr ON l.id = lr.loan_id
                 WHERE l.status = 'ACTIVE' AND lr.status != 'PAID' AND lr.due_date < CURDATE()
-                GROUP BY l.id;
+                GROUP BY l.id, l.loan_reference, l.outstanding_balance, l.member_id, m.first_name, m.last_name, m.member_code;
             """)
             overdue_loans = cursor.fetchall()
 

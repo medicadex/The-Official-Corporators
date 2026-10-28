@@ -1,7 +1,15 @@
 /**
- * THE OFFICIAL CORPORATORS (TOC) - FRONTEND CONFIGURATION (FIREBASE)
- * Loads Firebase configuration parameters for the web application
+ * WEALTHBRIDGE MULTIPURPOSE COOPERATIVE SOCIETY LIMITED (WMC)
+ * CLIENT CONFIGURATION
+ * Official Contact: wealthbridge.coopsociety@gmail.com
  */
+
+window.SUPABASE_CONFIG = {
+  url: "https://pdbirqjqcsuhdmzbtyel.supabase.co",
+  anonKey: "sb_publishable_SvtIVrqi3OQp2jPI0ka0og_bs187mYR",
+  projectRef: "pdbirqjqcsuhdmzbtyel",
+  region: "eu-west-1"
+};
 
 window.FIREBASE_CONFIG = {
   apiKey: "AIzaSyA40-q4vxHOomQmXk5f9B8veN9EhmFqjN0",

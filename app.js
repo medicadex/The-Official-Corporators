@@ -7,7 +7,7 @@
  * =============================================================================
  */
 
-const API_BASE_URL = "http://127.0.0.1:8088/api";
+const API_BASE_URL = window.API_BASE_URL || (window.location.protocol.startsWith('http') ? window.location.origin + "/api" : "http://127.0.0.1:8088/api");
 
 // Keep authentication transport centralized so API authorization is enforced server-side.
 const nativeFetch = window.fetch.bind(window);
@@ -44,19 +44,48 @@ window.formatNaira = formatNaira;
 
 function formatApiErrorMessage(detail, fallback = "An unexpected error occurred.") {
   if (!detail) return fallback;
-  if (typeof detail === "string") return detail;
-  if (Array.isArray(detail)) {
-    return detail.map(d => {
+  let msg = "";
+  if (typeof detail === "string") {
+    msg = detail;
+  } else if (Array.isArray(detail)) {
+    msg = detail.map(d => {
       if (typeof d === "string") return d;
       const field = (d.loc && d.loc.length > 0) ? d.loc[d.loc.length - 1] : "";
       const fieldName = field ? field.replace(/_/g, " ").toUpperCase() + ": " : "";
       return `${fieldName}${d.msg || "invalid field"}`;
     }).join("; ");
+  } else if (typeof detail === "object") {
+    msg = detail.msg || detail.message || JSON.stringify(detail);
+  } else {
+    msg = String(detail);
   }
-  if (typeof detail === "object") {
-    return detail.msg || detail.message || JSON.stringify(detail);
+
+  // Detect and translate internal database/network errors into cooperative friendly language
+  const technicalKeywords = [
+    "pooler.supabase",
+    "could not translate host",
+    "name or service not known",
+    "connection to server",
+    "timeout expired",
+    "operationalerror",
+    "psycopg2",
+    "mysql.connector",
+    "econnrefused",
+    "failed to fetch",
+    "database error",
+    "authentication service error",
+    "internal server error",
+    "ssl connection has been closed"
+  ];
+
+  const lower = msg.toLowerCase();
+  for (const kw of technicalKeywords) {
+    if (lower.includes(kw)) {
+      return "Cooperative servers are temporarily unreachable. Please check your internet connection and try again in a few moments, or contact the Secretariat (wealthbridge.coopsociety@gmail.com).";
+    }
   }
-  return String(detail);
+
+  return msg;
 }
 
 // Fallback founder dataset if backend API is cold-starting
@@ -101,6 +130,11 @@ function restoreSavedSession() {
       loadAuthenticatedMember();
       if (currentUser.is_executive) {
         loadExecutiveData();
+      }
+      if (currentUser.must_change_password) {
+        setTimeout(() => {
+          openChangePasswordModal(true);
+        }, 500);
       }
     } catch (e) {
       console.warn("Failed to parse saved session:", e);
@@ -221,6 +255,48 @@ function updateAuthNavUI() {
       dashIdBtn.innerHTML = `<span>🔒</span><span>Digital ID</span>`;
     }
   }
+
+  // Populate Navbar Dropdown & Topbar Dropdown User Details
+  const ddAvatar = document.getElementById("dd-user-avatar");
+  const ddName = document.getElementById("dd-user-name");
+  const ddCode = document.getElementById("dd-user-code");
+  const ddRole = document.getElementById("dd-user-role");
+  const ddEmail = document.getElementById("dd-user-email");
+  const ddKyc = document.getElementById("dd-user-kyc");
+  const ddPortalTitle = document.getElementById("dd-portal-toggle-title");
+  const ddPortalDesc = document.getElementById("dd-portal-toggle-desc");
+
+  const topbarDdAvatar = document.getElementById("topbar-dd-user-avatar");
+  const topbarDdName = document.getElementById("topbar-dd-user-name");
+  const topbarDdCode = document.getElementById("topbar-dd-user-code");
+  const topbarDdRole = document.getElementById("topbar-dd-user-role");
+  const topbarDdPortalTitle = document.getElementById("topbar-dd-portal-toggle-title");
+  const profileSecBadge = document.getElementById("profile-security-badge");
+
+  if (ddAvatar) ddAvatar.textContent = initials;
+  if (ddName) ddName.textContent = currentUser.full_name || "Cooperator";
+  if (ddCode) ddCode.textContent = currentUser.member_code || "WMC-MEMBER";
+  if (ddRole) ddRole.textContent = (currentUser.primary_role || "MEMBER").replace(/_/g, " ");
+  if (ddEmail) ddEmail.textContent = currentUser.email || "No email";
+  if (ddKyc) ddKyc.textContent = `KYC ${kycPct}%`;
+  if (ddPortalTitle) ddPortalTitle.textContent = currentUser.is_executive ? "Executive Desk" : "Member Portal";
+  if (ddPortalDesc) ddPortalDesc.textContent = currentUser.is_executive ? "Administrative control center" : "Cooperative accounts & loans";
+
+  if (topbarDdAvatar) topbarDdAvatar.textContent = initials;
+  if (topbarDdName) topbarDdName.textContent = currentUser.full_name || "Cooperator";
+  if (topbarDdCode) topbarDdCode.textContent = currentUser.member_code || "WMC-MEMBER";
+  if (topbarDdRole) topbarDdRole.textContent = (currentUser.primary_role || "MEMBER").replace(/_/g, " ");
+  if (topbarDdPortalTitle) topbarDdPortalTitle.textContent = "Public Site";
+
+  if (profileSecBadge) {
+    if (currentUser.must_change_password) {
+      profileSecBadge.textContent = "⚠️ Default Password (Action Required)";
+      profileSecBadge.className = "px-2.5 py-0.5 rounded text-[10px] font-black bg-amber-100 text-amber-800 border border-amber-300";
+    } else {
+      profileSecBadge.textContent = "🛡️ Password Secured";
+      profileSecBadge.className = "px-2.5 py-0.5 rounded text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200";
+    }
+  }
 }
 
 // -----------------------------------------------------------------------------
@@ -317,6 +393,11 @@ async function handleLoginSubmit(e) {
       if (data.login_prompts && data.login_prompts.length > 0) {
         renderLoginPrompts(data.login_prompts);
       }
+      if (currentUser.must_change_password) {
+        setTimeout(() => {
+          openChangePasswordModal(true);
+        }, 500);
+      }
       if (submitBtn) {
         submitBtn.disabled = false;
         submitBtn.textContent = "Sign In to Portal →";
@@ -325,7 +406,7 @@ async function handleLoginSubmit(e) {
 
   } catch (err) {
     console.error("Login fetch error:", err);
-    showLoginAlert(`⚠️ Connection error: Could not reach backend server at ${API_BASE_URL}.`, "error");
+    showLoginAlert("⚠️ Cooperative servers are temporarily unreachable. Please check your internet connection and try again in a few moments, or contact the Secretariat (wealthbridge.coopsociety@gmail.com).", "error");
     if (submitBtn) {
       submitBtn.disabled = false;
       submitBtn.textContent = "Sign In to Portal →";
@@ -685,6 +766,7 @@ function switchExecutiveTab(tabKey) {
   } else if (tabKey === "polaris") {
     loadPendingManualPayments();
     populateDirectCreditMembers();
+    populateDirectDebitMembers();
   } else if (tabKey === "rbac") {
     loadRbacDesk();
   } else if (tabKey === "audit") {
@@ -1414,12 +1496,18 @@ async function loadSystemConfigTable() {
 
       // Currency formatting for financial amounts
       let displayVal = val;
-      if (["SHARE_UNIT_PRICE", "TARGET_SHARE_CAPITAL", "WELFARE_MONTHLY_LEVY", "REGISTRATION_FEE", "PASSBOOK_FEE"].includes(key)) {
+      if (["SHARE_UNIT_PRICE", "TARGET_SHARE_CAPITAL", "WELFARE_MONTHLY_LEVY", "REGISTRATION_FEE", "PASSBOOK_FEE", "BANK_DEBIT_STAMP_DUTY_FEE", "BANK_DEBIT_STAMP_DUTY_THRESHOLD", "BANK_DEBIT_TRANSFER_FEE"].includes(key)) {
         displayVal = `<span class="font-bold text-emerald-800">${formatNaira(val)}</span>`;
       } else if (key === "MONTHLY_DUE_DAY") {
         displayVal = `<span class="font-bold text-indigo-900">${val}th of month</span>`;
       } else if (["MIN_SHARE_UNITS", "MAX_SHARE_UNITS"].includes(key)) {
         displayVal = `<span class="font-bold text-amber-800">${val} Units</span>`;
+      } else if (["BANK_DEBIT_CAMF_RATE", "BANK_DEBIT_VAT_RATE"].includes(key)) {
+        displayVal = `<span class="font-bold text-purple-900">${(parseFloat(val) * 100).toFixed(2)}%</span> <span class="text-[10px] text-slate-400 font-mono">(${val})</span>`;
+      } else if (key === "BANK_DEBIT_CHARGES_BEARER") {
+        displayVal = `<span class="font-bold px-2 py-0.5 rounded text-[11px] ${val === 'SOCIETY' ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800'}">${val}</span>`;
+      } else if (key === "BANK_CREDIT_CHARGES_ENABLED") {
+        displayVal = `<span class="font-bold px-2 py-0.5 rounded text-[11px] ${val === '1' || val === 'true' ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'}">${val === '1' || val === 'true' ? 'ENABLED' : 'DISABLED (0% Charges)'}</span>`;
       } else if (key === "OFFICIAL_EMAIL") {
         displayVal = `<span class="font-bold text-amber-700 underline">${val}</span>`;
       }
@@ -1901,7 +1989,7 @@ async function handleRegistrationSubmit(e) {
 
   submitBtn.disabled = true;
   submitBtn.textContent = "Validating & Submitting to Database...";
-  showRegAlert("Connecting to MySQL Database...", "info");
+  showRegAlert("Connecting to secure cooperative servers...", "info");
 
   try {
     const res = await fetch(`${API_BASE_URL}/register`, {
@@ -1952,7 +2040,7 @@ async function handleRegistrationSubmit(e) {
     }, 2500);
 
   } catch (err) {
-    showRegAlert(`⚠️ Connection Error: Unable to reach the backend server at ${API_BASE_URL}.`, "error");
+    showRegAlert("⚠️ Cooperative servers are temporarily unreachable. Please check your internet connection and try again in a few moments, or contact the Secretariat (wealthbridge.coopsociety@gmail.com).", "error");
     submitBtn.disabled = false;
     submitBtn.textContent = "Submit Application & Generate Member ID";
   }
@@ -2205,6 +2293,217 @@ function closeProfileModal() {
   const modal = document.getElementById("modal-profile");
   if (modal) modal.classList.add("hidden");
 }
+
+let modalChangePasswordIsMandatory = false;
+
+function openChangePasswordModal(isMandatory = false) {
+  modalChangePasswordIsMandatory = Boolean(isMandatory);
+
+  const modal = document.getElementById("modal-change-password");
+  const title = document.getElementById("cp-modal-title");
+  const subtitle = document.getElementById("cp-modal-subtitle");
+  const closeBtn = document.getElementById("cp-modal-close-btn");
+  const cancelBtn = document.getElementById("cp-cancel-btn");
+  const mandatoryAlert = document.getElementById("cp-mandatory-alert");
+  const alertBox = document.getElementById("cp-alert");
+  const form = document.getElementById("change-password-form");
+
+  if (form) form.reset();
+  if (alertBox) {
+    alertBox.className = "hidden p-3 rounded-xl text-xs mb-4";
+    alertBox.textContent = "";
+  }
+
+  if (modalChangePasswordIsMandatory) {
+    if (title) title.textContent = "Mandatory Password Update";
+    if (subtitle) subtitle.textContent = "Please set a secure personal password to continue";
+    if (closeBtn) closeBtn.classList.add("hidden");
+    if (cancelBtn) cancelBtn.classList.add("hidden");
+    if (mandatoryAlert) mandatoryAlert.classList.remove("hidden");
+  } else {
+    if (title) title.textContent = "Change Access Password";
+    if (subtitle) subtitle.textContent = "Update your member portal sign-in credentials";
+    if (closeBtn) closeBtn.classList.remove("hidden");
+    if (cancelBtn) cancelBtn.classList.remove("hidden");
+    if (mandatoryAlert) mandatoryAlert.classList.add("hidden");
+  }
+
+  if (modal) modal.classList.remove("hidden");
+}
+
+function closeChangePasswordModal() {
+  if (modalChangePasswordIsMandatory) {
+    alert("Cooperative Security Notice: You must update your default password before accessing other features.");
+    return;
+  }
+  const modal = document.getElementById("modal-change-password");
+  if (modal) modal.classList.add("hidden");
+}
+
+async function handleChangePasswordSubmit(e) {
+  if (e && e.preventDefault) e.preventDefault();
+
+  const oldPass = document.getElementById("cp-old-password")?.value.trim() || "";
+  const newPass = document.getElementById("cp-new-password")?.value.trim() || "";
+  const confirmPass = document.getElementById("cp-confirm-password")?.value.trim() || "";
+  const alertBox = document.getElementById("cp-alert");
+  const submitBtn = document.getElementById("btn-change-password-submit");
+
+  function showAlert(msg, type = "error") {
+    if (!alertBox) return;
+    alertBox.className = `p-3.5 rounded-xl text-xs mb-4 font-medium leading-relaxed ${
+      type === "success" ? "bg-emerald-50 text-emerald-900 border border-emerald-300" : "bg-red-50 text-red-900 border border-red-300"
+    }`;
+    alertBox.textContent = msg;
+    alertBox.classList.remove("hidden");
+  }
+
+  if (!oldPass || !newPass || !confirmPass) {
+    showAlert("Please fill in all password fields.", "error");
+    return;
+  }
+
+  if (newPass.length < 8) {
+    showAlert("New password must be at least 8 characters long.", "error");
+    return;
+  }
+
+  if (newPass !== confirmPass) {
+    showAlert("The new password and confirmation password do not match.", "error");
+    return;
+  }
+
+  if (oldPass === newPass) {
+    showAlert("The new password cannot be the same as your current default password.", "error");
+    return;
+  }
+
+  const token = localStorage.getItem("wmc_token");
+  if (!token) {
+    showAlert("Authentication session expired. Please sign in again.", "error");
+    return;
+  }
+
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = "<span>⏳</span><span>Updating Password...</span>";
+  }
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/auth/change-password`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        old_password: oldPass,
+        new_password: newPass
+      })
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      const errDetail = formatApiErrorMessage(data.detail, "Password update failed. Please verify your current password.");
+      showAlert(`⚠️ ${errDetail}`, "error");
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = "<span>🔒</span><span>Update Password</span>";
+      }
+      return;
+    }
+
+    // Success!
+    showAlert("✅ Password updated successfully! Your account is now secured.", "success");
+    modalChangePasswordIsMandatory = false;
+
+    if (currentUser) {
+      currentUser.must_change_password = false;
+      localStorage.setItem("wmc_user", JSON.stringify(currentUser));
+      updateAuthNavUI();
+    }
+
+    setTimeout(() => {
+      closeChangePasswordModal();
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = "<span>🔒</span><span>Update Password</span>";
+      }
+    }, 1200);
+
+  } catch (err) {
+    console.error("Change password fetch error:", err);
+    showAlert(`⚠️ Connection error: Could not reach authentication server.`, "error");
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = "<span>🔒</span><span>Update Password</span>";
+    }
+  }
+}
+
+function toggleUserDropdown(e) {
+  if (e) e.stopPropagation();
+  const menu = document.getElementById("nav-user-dropdown-menu");
+  const chevron = document.getElementById("nav-user-chevron");
+  const topbarMenu = document.getElementById("topbar-user-dropdown-menu");
+  const topbarChevron = document.getElementById("topbar-user-chevron");
+
+  if (topbarMenu) topbarMenu.classList.add("hidden");
+  if (topbarChevron) topbarChevron.classList.remove("rotate-180");
+
+  if (!menu) return;
+  const isClosed = menu.classList.contains("hidden");
+  if (isClosed) {
+    menu.classList.remove("hidden");
+    if (chevron) chevron.classList.add("rotate-180");
+  } else {
+    menu.classList.add("hidden");
+    if (chevron) chevron.classList.remove("rotate-180");
+  }
+}
+
+function toggleTopbarDropdown(e) {
+  if (e) e.stopPropagation();
+  const menu = document.getElementById("topbar-user-dropdown-menu");
+  const chevron = document.getElementById("topbar-user-chevron");
+  const navMenu = document.getElementById("nav-user-dropdown-menu");
+  const navChevron = document.getElementById("nav-user-chevron");
+
+  if (navMenu) navMenu.classList.add("hidden");
+  if (navChevron) navChevron.classList.remove("rotate-180");
+
+  if (!menu) return;
+  const isClosed = menu.classList.contains("hidden");
+  if (isClosed) {
+    menu.classList.remove("hidden");
+    if (chevron) chevron.classList.add("rotate-180");
+  } else {
+    menu.classList.add("hidden");
+    if (chevron) chevron.classList.remove("rotate-180");
+  }
+}
+
+function closeAllUserDropdowns() {
+  const navMenu = document.getElementById("nav-user-dropdown-menu");
+  const navChevron = document.getElementById("nav-user-chevron");
+  const topbarMenu = document.getElementById("topbar-user-dropdown-menu");
+  const topbarChevron = document.getElementById("topbar-user-chevron");
+
+  if (navMenu) navMenu.classList.add("hidden");
+  if (navChevron) navChevron.classList.remove("rotate-180");
+  if (topbarMenu) topbarMenu.classList.add("hidden");
+  if (topbarChevron) topbarChevron.classList.remove("rotate-180");
+}
+
+window.addEventListener("click", (e) => {
+  const navContainer = document.getElementById("nav-user-dropdown-container");
+  const topbarContainer = document.getElementById("topbar-user-dropdown-container");
+  if (navContainer && !navContainer.contains(e.target) &&
+      topbarContainer && !topbarContainer.contains(e.target)) {
+    closeAllUserDropdowns();
+  }
+});
 
 function showProfileAlert(msg, type = "error") {
   const alertBox = document.getElementById("profile-status-alert");
@@ -4865,6 +5164,34 @@ async function openElectronicIdModal() {
     downloadBtn.innerHTML = `<span>📥</span><span>Download Vector PDF</span>`;
   }
 
+  // Hydrate Back of Card Dual Signatures (Dynamic President & General Secretary)
+  try {
+    const sigRes = await fetch(`${API_BASE_URL}/governance/signatories`);
+    if (sigRes.ok) {
+      const sigData = await sigRes.json();
+      const sigs = sigData.data || sigData;
+      const secSigEl = document.getElementById("idcard-sec-signature");
+      const secTitleEl = document.getElementById("idcard-sec-title");
+      const presSigEl = document.getElementById("idcard-pres-signature");
+      const presTitleEl = document.getElementById("idcard-pres-title");
+
+      if (secSigEl && sigs.general_secretary) {
+        secSigEl.textContent = sigs.general_secretary.name;
+      }
+      if (secTitleEl && sigs.general_secretary) {
+        secTitleEl.textContent = sigs.general_secretary.title;
+      }
+      if (presSigEl && sigs.president) {
+        presSigEl.textContent = sigs.president.name;
+      }
+      if (presTitleEl && sigs.president) {
+        presTitleEl.textContent = sigs.president.title;
+      }
+    }
+  } catch (sigErr) {
+    console.warn("Could not load dynamic signatories for ID Card:", sigErr);
+  }
+
   modal.classList.remove("hidden");
 }
 window.openElectronicIdModal = openElectronicIdModal;
@@ -5911,6 +6238,137 @@ async function handleDirectCreditSubmit(e) {
 }
 window.handleDirectCreditSubmit = handleDirectCreditSubmit;
 
+// -----------------------------------------------------------------------------
+// DIRECT EXECUTIVE DEBIT & OUTWARD BANK PAYOUT DESK (DYNAMIC BANK CHARGES)
+// -----------------------------------------------------------------------------
+async function populateDirectDebitMembers() {
+  const select = document.getElementById("direct-debit-member-id");
+  if (!select) return;
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/members`);
+    if (res.ok) {
+      const data = await res.json();
+      const members = Array.isArray(data) ? data : (data.data || []);
+      select.innerHTML = '<option value="">Select Cooperator...</option>' + 
+        members.map(m => `<option value="${m.id}">${m.first_name} ${m.last_name} (${m.member_code})</option>`).join("");
+    }
+  } catch (e) {
+    console.warn("Could not populate members for direct debit:", e);
+  }
+}
+window.populateDirectDebitMembers = populateDirectDebitMembers;
+
+async function updateDirectDebitMemberBalance() {
+  const select = document.getElementById("direct-debit-member-id");
+  const balSpan = document.getElementById("direct-debit-member-bal");
+  if (!select || !balSpan) return;
+  const mId = select.value;
+  if (!mId) {
+    balSpan.textContent = "";
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/members/${mId}/profile`);
+    if (res.ok) {
+      const data = await res.json();
+      const profile = data.data || data;
+      const savBal = profile.savings_balance || profile.savings || 0;
+      balSpan.textContent = `Ordinary Savings Balance: ₦${parseFloat(savBal).toLocaleString('en-NG', {minimumFractionDigits: 2})}`;
+    }
+  } catch (e) {
+    balSpan.textContent = "";
+  }
+}
+window.updateDirectDebitMemberBalance = updateDirectDebitMemberBalance;
+
+let debitPreviewTimer = null;
+async function calculateDebitChargesPreview() {
+  clearTimeout(debitPreviewTimer);
+  debitPreviewTimer = setTimeout(async () => {
+    const amtInput = document.getElementById("direct-debit-amount");
+    const previewBox = document.getElementById("direct-debit-charges-preview");
+    if (!amtInput || !previewBox) return;
+
+    const amt = parseFloat(amtInput.value);
+    if (!amt || amt <= 0) {
+      previewBox.classList.add("hidden");
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/accounting/bank-debit-charges?amount=${amt}`);
+      if (res.ok) {
+        const body = await res.json();
+        const c = body.data || body;
+        previewBox.classList.remove("hidden");
+        document.getElementById("preview-charges-bearer").textContent = `BEARER: ${c.charges_bearer}`;
+        document.getElementById("preview-gross-amt").textContent = `₦${c.gross_amount.toLocaleString('en-NG', {minimumFractionDigits: 2})}`;
+        document.getElementById("preview-camf-amt").textContent = `₦${c.camf_amount.toLocaleString('en-NG', {minimumFractionDigits: 2})}`;
+        document.getElementById("preview-stamp-amt").textContent = `₦${c.stamp_duty_amount.toLocaleString('en-NG', {minimumFractionDigits: 2})}`;
+        document.getElementById("preview-vat-amt").textContent = `₦${c.vat_amount.toLocaleString('en-NG', {minimumFractionDigits: 2})}`;
+        document.getElementById("preview-total-charges").textContent = `₦${c.total_bank_charges.toLocaleString('en-NG', {minimumFractionDigits: 2})}`;
+        document.getElementById("preview-total-outflow").textContent = `₦${c.total_debit_from_polaris.toLocaleString('en-NG', {minimumFractionDigits: 2})}`;
+      }
+    } catch (e) {
+      console.warn("Error calculating bank debit charges preview:", e);
+    }
+  }, 250);
+}
+window.calculateDebitChargesPreview = calculateDebitChargesPreview;
+
+async function handleDirectDebitSubmit(e) {
+  e.preventDefault();
+  const memberId = parseInt(document.getElementById("direct-debit-member-id").value);
+  const category = document.getElementById("direct-debit-category").value;
+  const amount = parseFloat(document.getElementById("direct-debit-amount").value);
+  const bankName = (document.getElementById("direct-debit-bank-name")?.value || "").trim();
+  const accountNumber = (document.getElementById("direct-debit-account-number")?.value || "").trim();
+  const narration = document.getElementById("direct-debit-narration").value.trim();
+
+  if (!memberId || !amount || amount <= 0 || !narration) {
+    alert("Please fill in all mandatory fields with valid values.");
+    return;
+  }
+
+  if (!confirm(`Confirm disbursing direct debit payout of ₦${amount.toLocaleString()} from ${category}? Polaris Bank debit charges will be automatically posted.`)) return;
+
+  const btn = document.getElementById("btn-submit-direct-debit");
+  if (btn) btn.disabled = true;
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/admin/manual-payments/direct-debit`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        member_id: memberId,
+        amount: amount,
+        debit_category: category,
+        narration: narration,
+        bank_name: bankName || null,
+        account_number: accountNumber || null
+      })
+    });
+
+    const data = await res.json();
+    if (res.ok) {
+      alert(`✅ Direct debit payout posted successfully! Net Payout: ₦${data.net_payout.toLocaleString('en-NG', {minimumFractionDigits: 2})} (Bank Charges: ₦${data.bank_charges.total_bank_charges.toLocaleString('en-NG', {minimumFractionDigits: 2})})`);
+      document.getElementById("form-direct-debit").reset();
+      document.getElementById("direct-debit-charges-preview").classList.add("hidden");
+      document.getElementById("direct-debit-member-bal").textContent = "";
+      if (typeof loadExecutiveMetrics === "function") loadExecutiveMetrics();
+    } else {
+      alert("Debit Error: " + (data.detail || "Failed to post payout"));
+    }
+  } catch (err) {
+    alert("Connection error while posting direct debit payout.");
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+window.handleDirectDebitSubmit = handleDirectDebitSubmit;
+
 
 // -----------------------------------------------------------------------------
 // 6. PAYMENT ADVICE MODIFICATION DESK
@@ -6411,9 +6869,13 @@ async function handleAssignRoleClick() {
 
   try {
     const assignerId = currentUser && currentUser.id ? currentUser.id : 1;
+    const token = localStorage.getItem("wmc_token");
+    const headers = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
     const res = await fetch(`${API_BASE_URL}/admin/members/${memberId}/roles`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: headers,
       body: JSON.stringify({
         role_id: parseInt(roleId),
         appointment_notes: notes,
@@ -6427,10 +6889,11 @@ async function handleAssignRoleClick() {
       document.getElementById("rbac-assign-notes").value = "";
       loadMemberRoleBadges(memberId);
     } else {
-      alert("Error allocating role: " + (data.detail || "Failed"));
+      const err = formatApiErrorMessage(data.detail, "Role allocation failed.");
+      alert(`⚠️ ${err}`);
     }
   } catch (err) {
-    alert("Connection error while assigning role.");
+    alert("⚠️ Connection error while assigning role.");
   }
 }
 window.handleAssignRoleClick = handleAssignRoleClick;
@@ -6439,19 +6902,25 @@ async function revokeRoleFromMember(memberId, roleId) {
   if (!confirm("Are you sure you want to revoke this operational role from the cooperator?")) return;
 
   try {
+    const token = localStorage.getItem("wmc_token");
+    const headers = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
     const res = await fetch(`${API_BASE_URL}/admin/members/${memberId}/roles/${roleId}`, {
-      method: "DELETE"
+      method: "DELETE",
+      headers: headers
     });
 
     if (res.ok) {
-      alert("Role revoked.");
+      alert("✅ Role revoked successfully.");
       loadMemberRoleBadges(memberId);
     } else {
       const data = await res.json();
-      alert("Error revoking role: " + (data.detail || "Failed"));
+      const err = formatApiErrorMessage(data.detail, "Role revocation failed.");
+      alert(`⚠️ ${err}`);
     }
   } catch (err) {
-    alert("Connection error while revoking role.");
+    alert("⚠️ Connection error while revoking role.");
   }
 }
 window.revokeRoleFromMember = revokeRoleFromMember;
@@ -6985,13 +7454,61 @@ window.submitExitRequestForm = submitExitRequestForm;
 
 
 // --- 3. BULK COOPERATOR CSV IMPORT & DIRECTORY EXPORT ---
-function downloadMembersDirectoryCsv() {
-  window.open(`${API_BASE_URL}/admin/members/export-csv`, "_blank");
+async function downloadMembersDirectoryCsv() {
+  const token = localStorage.getItem("wmc_token") || (currentUser ? currentUser.token : "");
+  if (!token) {
+    alert("Authentication required. Please sign in as General Secretary or President.");
+    return;
+  }
+  try {
+    const res = await fetch(`${API_BASE_URL}/admin/members/export-csv`, {
+      headers: { "Authorization": `Bearer ${token}` }
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || "Access denied. Only General Secretary or President can export directory.");
+    }
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `Wealthbridge_Cooperators_Directory_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  } catch (e) {
+    alert(e.message);
+  }
 }
 window.downloadMembersDirectoryCsv = downloadMembersDirectoryCsv;
 
-function downloadMemberImportTemplate() {
-  window.open(`${API_BASE_URL}/admin/members/template-csv`, "_blank");
+async function downloadMemberImportTemplate() {
+  const token = localStorage.getItem("wmc_token") || (currentUser ? currentUser.token : "");
+  if (!token) {
+    alert("Authentication required. Please sign in as General Secretary or President.");
+    return;
+  }
+  try {
+    const res = await fetch(`${API_BASE_URL}/admin/members/template-csv`, {
+      headers: { "Authorization": `Bearer ${token}` }
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || "Access denied. Only General Secretary or President can download template.");
+    }
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "Wealthbridge_Member_Import_Template.csv";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  } catch (e) {
+    alert(e.message);
+  }
 }
 window.downloadMemberImportTemplate = downloadMemberImportTemplate;
 

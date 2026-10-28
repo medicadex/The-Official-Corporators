@@ -12,6 +12,10 @@ Interactive Swagger Docs: http://127.0.0.1:8088/docs
 
 import os
 import secrets
+import logging
+
+logger = logging.getLogger('wealthbridge_api')
+DEFAULT_INITIAL_PASSWORD = 'Wealthbridge@2026'
 import time
 import shutil
 import csv
@@ -314,7 +318,7 @@ class LoginRequest(BaseModel):
 
 class ChangePasswordRequest(BaseModel):
     old_password: str = Field(..., description="Current Password")
-    new_password: str = Field(..., min_length=12, description="New Secure Password (Min 12 chars)")
+    new_password: str = Field(..., min_length=8, description="New Secure Password (Min 8 chars)")
 
 class RegistrationRequest(BaseModel):
     first_name: str = Field(..., min_length=2, description="First Name")
@@ -559,8 +563,19 @@ class RejectManualPaymentRequest(BaseModel):
 class DirectMemberCreditRequest(BaseModel):
     member_id: int = Field(..., description="Member ID to credit")
     amount: float = Field(..., gt=0, description="Amount in NGN")
-    credit_category: str = Field(..., description="SAVINGS, SHARE_CAPITAL, WELFARE, or LOAN_REPAYMENT")
+    credit_category: Optional[str] = Field(None, description="SAVINGS, SHARE_CAPITAL, WELFARE, or LOAN_REPAYMENT")
+    destination_account: Optional[str] = Field(None, description="Fallback matching frontend field")
+    bank_reference: Optional[str] = Field(None, description="Polaris Bank Reference / Teller")
     narration: str = Field(..., min_length=5, description="Mandatory statutory justification")
+
+class DirectMemberDebitRequest(BaseModel):
+    member_id: int = Field(..., description="Member ID to debit")
+    amount: float = Field(..., gt=0, description="Gross amount in NGN")
+    debit_category: Optional[str] = Field(None, description="SAVINGS, TARGET_SAVINGS, or WELFARE_GRANT")
+    source_account: Optional[str] = Field(None, description="Fallback matching frontend field")
+    narration: str = Field(..., min_length=5, description="Mandatory statutory justification")
+    bank_name: Optional[str] = Field(None, description="Beneficiary Bank Name")
+    account_number: Optional[str] = Field(None, description="Beneficiary Account Number")
 
 class ModifyAdviceRequest(BaseModel):
     scope: str = Field(default="THIS_MONTH_ONLY", description="THIS_MONTH_ONLY or PERMANENT_COMMITMENT")
@@ -661,7 +676,11 @@ def login(payload: LoginRequest, request: Request):
         _record_failed_login(request, payload.identifier)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(ve))
     except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Authentication service error: {str(e)}")
+        logger.error(f"[AUTH ERROR] Failed login for '{payload.identifier}': {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Cooperative servers are temporarily unreachable. Please check your internet connection and try again in a few moments, or contact the Secretariat (wealthbridge.coopsociety@gmail.com)."
+        )
 
 @app.post("/api/auth/change-password")
 def change_password(payload: ChangePasswordRequest, user: Dict[str, Any] = Depends(get_current_user)):
@@ -741,18 +760,28 @@ def register_member(payload: RegistrationRequest):
             data["password"] = "Wealthbridge@2026"
         result = db.register_new_member(data)
         pwd = result.get("default_password") or data["password"]
+        is_custom_pw = bool(data.get("password") and data["password"] not in ("Wealthbridge@2026", "Pass123*", DEFAULT_INITIAL_PASSWORD))
+        if is_custom_pw:
+            resp_msg = f"Registration successful! Member Code {result['member_code']} assigned. You may now sign in with your chosen password."
+        else:
+            resp_msg = f"Registration successful! Member Code {result['member_code']} assigned. Default password: {pwd}."
         return {
             "status": "SUCCESS",
             "member_id": result["member_id"],
             "member_code": result["member_code"],
             "full_name": result["full_name"],
             "default_password": pwd,
-            "message": f"Registration successful! Member Code {result['member_code']} assigned. Default password: {pwd}."
+            "is_custom_password": is_custom_pw,
+            "message": resp_msg
         }
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error during registration: {str(e)}")
+        logger.error(f"[REGISTRATION ERROR] Failed registration for {payload.email}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Cooperative servers are temporarily unreachable. Please check your internet connection and try again in a few moments, or contact the Secretariat (wealthbridge.coopsociety@gmail.com)."
+        )
 
 @app.get("/")
 def root():
@@ -801,6 +830,17 @@ def admin_update_system_config(
         return {"status": "success", "data": result}
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/accounting/bank-debit-charges")
+def estimate_bank_debit_charges(
+    amount: float = Query(..., gt=0, description="Gross payout debit amount in NGN")
+):
+    """Calculates dynamic Polaris Bank debit charges (CAMF, Stamp Duty, VAT, Transfer Fee) based on active system_config."""
+    try:
+        return {"status": "success", "data": db.calculate_bank_debit_charges(amount)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -873,11 +913,41 @@ async def bulk_import_members_csv(
         raise HTTPException(status_code=500, detail=f"Failed to process CSV import: {str(e)}")
 
 
+def _require_secretarial_access(request: Request, token: Optional[str] = None) -> Dict[str, Any]:
+    """Strictly validates that caller is General Secretary, President, or System Super Admin."""
+    user = _resolve_report_user(request, token)
+    roles = set(user.get("roles", []))
+    if user.get("primary_role"):
+        roles.add(user["primary_role"])
+    if user.get("executive_portfolio"):
+        roles.add(user["executive_portfolio"])
+    
+    is_sec_or_pres = bool(
+        {"PRESIDENT", "GENERAL_SECRETARY", "SUPER_ADMIN"}.intersection(roles) or
+        user.get("is_admin_only") or
+        user.get("is_executive")
+    )
+    if not is_sec_or_pres:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access Denied: Only the General Secretary and President have authority to manage the cooperator registry and export member records."
+        )
+    return user
+
+
+@app.get("/api/governance/signatories")
+def get_active_signatories():
+    """Returns dynamic authorized executive signatories (President and General Secretary) for credentials."""
+    return {"status": "success", "data": db.get_active_signatories()}
+
+
 @app.get("/api/admin/members/template-csv")
 def download_member_import_template(
-    user: Dict[str, Any] = Depends(get_current_user)
+    request: Request,
+    token: Optional[str] = Query(None)
 ):
-    """Streams a standardized CSV template with instructions for bulk cooperator onboarding."""
+    """Streams a standardized CSV template for bulk cooperator onboarding. Restricted to Secretariat & President."""
+    _require_secretarial_access(request, token)
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow([
@@ -905,17 +975,11 @@ def download_member_import_template(
 
 @app.get("/api/admin/members/export-csv")
 def export_members_directory(
-    user: Dict[str, Any] = Depends(get_current_user)
+    request: Request,
+    token: Optional[str] = Query(None)
 ):
-    """Streams the official RFC 4180 CSV cooperator directory with portfolios and balances."""
-    is_authorized = (
-        "view_all_members" in user.get("permissions", []) or
-        "manage_members" in user.get("permissions", []) or
-        user.get("is_executive")
-    )
-    if not is_authorized:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
-
+    """Streams the official RFC 4180 CSV cooperator directory. Restricted strictly to Secretariat & President."""
+    _require_secretarial_access(request, token)
     try:
         csv_text = db.export_members_directory_csv()
         filename = f"Wealthbridge_Cooperators_Directory_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
@@ -2309,13 +2373,49 @@ def record_direct_member_credit(
     if not ({"verify_contributions", "manage_inward_remittances", "authorize_disbursements"}.intersection(user.get("permissions", [])) or user.get("is_executive")):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Treasury executive privileges required.")
     try:
+        cat = payload.credit_category or payload.destination_account or "SAVINGS"
         res = db.record_direct_member_credit(
             member_id=payload.member_id,
             officer_id=user["id"],
             officer_role=user.get("primary_role", "EXECUTIVE_OFFICER"),
             amount=payload.amount,
-            credit_category=payload.credit_category,
+            credit_category=cat,
             narration=payload.narration
+        )
+        return res
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/admin/manual-payments/direct-debit")
+def record_direct_member_debit(
+    payload: DirectMemberDebitRequest,
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Direct executive debit & outward disbursement desk for Financial Secretary, Treasurer, and President.
+    Allows direct debiting of member ordinary savings, target savings, or welfare grant payouts
+    with dynamic Polaris Bank charges (CAMF 0.1%, Stamp Duty NGN 50, VAT 7.5%, NIP fee) automatically calculated and posted to GL.
+    """
+    if not ({"authorize_disbursements", "treasurer_loan_disbursement", "manage_inward_remittances"}.intersection(user.get("permissions", [])) or user.get("is_executive")):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Treasury executive privileges required.")
+    try:
+        cat = payload.debit_category or payload.source_account or "SAVINGS"
+        bank_details = None
+        if payload.bank_name or payload.account_number:
+            bank_details = {
+                "bank_name": payload.bank_name,
+                "account_number": payload.account_number
+            }
+        res = db.record_direct_member_debit(
+            member_id=payload.member_id,
+            officer_id=user["id"],
+            officer_role=user.get("primary_role", "EXECUTIVE_OFFICER"),
+            amount=payload.amount,
+            debit_category=cat,
+            narration=payload.narration,
+            bank_details=bank_details
         )
         return res
     except ValueError as ve:

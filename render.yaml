@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: wealthbridge-coop-portal
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn wbmf_api:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.8
+      - key: DB_ENGINE
+        value: supabase
+      - key: SUPABASE_DB_URL
+        sync: false
+      - key: SUPABASE_URL
+        value: https://pdbirqjqcsuhdmzbtyel.supabase.co
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: AUTH_SALT
+        value: wealthbridge_coop_pbkdf2_salt_2026
+      - key: OFFICIAL_EMAIL
+        value: wealthbridge.coopsociety@gmail.com
+      - key: SOCIETY_NAME
+        value: "Wealthbridge Multipurpose Cooperative Society Limited"
+      - key: BANK_PARTNER
+        value: "Polaris Bank Limited"
+      - key: PAYSTACK_SECRET_KEY
+        sync: false
+      - key: PAYSTACK_PUBLIC_KEY
+        sync: false

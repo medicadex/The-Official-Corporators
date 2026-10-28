@@ -991,6 +991,29 @@
           </div>
         </div>
 
+        <!-- 7. ACCOUNT SECURITY & ACCESS PASSWORD -->
+        <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h4 class="font-bold text-wmcNavy-950 text-xs uppercase tracking-wider flex items-center gap-1.5">
+              <span>🔐</span>
+              <span>7. Account Security &amp; Access Password</span>
+            </h4>
+            <span id="profile-security-badge" class="px-2.5 py-0.5 rounded text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200">
+              🛡️ Password Secured
+            </span>
+          </div>
+          <p class="text-[11px] text-slate-500 -mt-1">
+            Manage your confidential member portal access password. You may update your password at any time to safeguard your financial ledger and voting rights.
+          </p>
+          <div class="flex items-center justify-between pt-1">
+            <span class="text-[11px] text-slate-600 font-medium">Standard policy: Minimum 8 characters.</span>
+            <button type="button" onclick="openChangePasswordModal(false)" class="px-4 py-2 rounded-xl bg-wmcNavy-900 hover:bg-wmcNavy-800 text-amber-300 font-bold text-xs shadow-sm flex items-center gap-1.5 transition">
+              <span>🔑</span>
+              <span>Change Password</span>
+            </button>
+          </div>
+        </div>
+
         <!-- Modal Submit Actions -->
         <div class="pt-4 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3">
           <span class="text-[11px] text-slate-400">
@@ -1007,6 +1030,87 @@
           </div>
         </div>
 
+      </form>
+
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       MODAL: CHANGE / RESET ACCESS PASSWORD
+       ========================================================================= -->
+  <div id="modal-change-password" class="fixed inset-0 z-[60] bg-slate-950/70 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="glass-panel bg-white w-full max-w-md rounded-3xl p-6 sm:p-8 shadow-2xl border border-slate-200 relative">
+      
+      <!-- Modal Header -->
+      <div class="flex justify-between items-start mb-5">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center text-lg border border-amber-200 shadow-sm">
+            🔑
+          </div>
+          <div>
+            <h3 id="cp-modal-title" class="text-lg font-bold text-wmcNavy-950 leading-tight">Change Access Password</h3>
+            <p id="cp-modal-subtitle" class="text-xs text-slate-500">Update your member portal sign-in credentials</p>
+          </div>
+        </div>
+        <button id="cp-modal-close-btn" type="button" onclick="closeChangePasswordModal()" class="text-slate-400 hover:text-slate-700 text-lg font-bold p-1">✕</button>
+      </div>
+
+      <!-- Mandatory Security Alert Banner -->
+      <div id="cp-mandatory-alert" class="hidden p-3.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 text-xs mb-4 space-y-1">
+        <div class="flex items-center gap-1.5 font-bold text-amber-900">
+          <span>⚠️</span>
+          <span>Mandatory Security Update Required:</span>
+        </div>
+        <p class="leading-relaxed text-[11px] text-amber-800">
+          You are currently signed in with the default initial password. In compliance with cooperative cybersecurity protocols, you must set a new private password before accessing other features.
+        </p>
+      </div>
+
+      <!-- Dynamic Alert Box for Status/Errors -->
+      <div id="cp-alert" class="hidden p-3 rounded-xl text-xs mb-4"></div>
+
+      <!-- Form -->
+      <form id="change-password-form" onsubmit="handleChangePasswordSubmit(event)" class="space-y-4 text-xs">
+        <div>
+          <div class="flex justify-between items-center mb-1">
+            <label class="font-bold text-slate-700">Current Password *</label>
+            <button type="button" onclick="togglePasswordVisibility('cp-old-password')" class="text-[10px] text-amber-600 font-semibold hover:underline">
+              Show/Hide
+            </button>
+          </div>
+          <input type="password" id="cp-old-password" required placeholder="Enter current password" class="w-full p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-amber-500 focus:outline-none">
+        </div>
+
+        <div>
+          <div class="flex justify-between items-center mb-1">
+            <label class="font-bold text-slate-700">New Password *</label>
+            <button type="button" onclick="togglePasswordVisibility('cp-new-password')" class="text-[10px] text-amber-600 font-semibold hover:underline">
+              Show/Hide
+            </button>
+          </div>
+          <input type="password" id="cp-new-password" required minlength="8" placeholder="Enter new secure password (min 8 chars)" class="w-full p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-amber-500 focus:outline-none">
+          <span class="text-[10px] text-slate-400 mt-1 block">Minimum 8 characters (letters, numbers, or symbols)</span>
+        </div>
+
+        <div>
+          <div class="flex justify-between items-center mb-1">
+            <label class="font-bold text-slate-700">Confirm New Password *</label>
+            <button type="button" onclick="togglePasswordVisibility('cp-confirm-password')" class="text-[10px] text-amber-600 font-semibold hover:underline">
+              Show/Hide
+            </button>
+          </div>
+          <input type="password" id="cp-confirm-password" required minlength="8" placeholder="Repeat new secure password" class="w-full p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-amber-500 focus:outline-none">
+        </div>
+
+        <div class="pt-3 flex items-center justify-end gap-3">
+          <button type="button" id="cp-cancel-btn" onclick="closeChangePasswordModal()" class="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-bold hover:bg-slate-50 transition">
+            Cancel
+          </button>
+          <button type="submit" id="btn-change-password-submit" class="px-6 py-2.5 rounded-xl btn-primary font-bold text-xs shadow-md flex items-center justify-center gap-2">
+            <span>🔒</span>
+            <span>Update Password</span>
+          </button>
+        </div>
       </form>
 
     </div>
@@ -1218,13 +1322,86 @@
 
         <!-- Authenticated State (Shown when logged in) -->
         <div id="nav-auth-actions" class="hidden flex items-center gap-3">
-          <div class="flex items-center gap-2.5 bg-slate-100 hover:bg-slate-200/70 border border-slate-200 py-1.5 px-3 rounded-xl cursor-pointer" onclick="togglePortalMode()">
-            <div id="nav-user-avatar" class="w-7 h-7 rounded-lg bg-gradient-to-br from-wmcNavy-950 to-wmcNavy-800 text-amber-300 flex items-center justify-center font-extrabold text-[11px] border border-amber-400/30">
-              QA
-            </div>
-            <div class="text-left hidden sm:block">
-              <span id="nav-user-name" class="block font-bold text-xs text-wmcNavy-950 leading-tight">Qazeem Adebowale</span>
-              <span id="nav-user-role-badge" class="inline-block text-[9px] font-black uppercase tracking-wider text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">PRESIDENT</span>
+          
+          <!-- Member Avatar & Name Dropdown Container -->
+          <div class="relative" id="nav-user-dropdown-container">
+            <button id="nav-user-dropdown-btn" type="button" onclick="toggleUserDropdown(event)" class="flex items-center gap-2.5 bg-slate-100 hover:bg-slate-200/80 border border-slate-200 py-1.5 px-3 rounded-xl cursor-pointer transition shadow-sm" title="Member Account Menu">
+              <div id="nav-user-avatar" class="w-7 h-7 rounded-lg bg-gradient-to-br from-wmcNavy-950 to-wmcNavy-800 text-amber-300 flex items-center justify-center font-extrabold text-[11px] border border-amber-400/30">
+                QA
+              </div>
+              <div class="text-left hidden sm:block">
+                <span id="nav-user-name" class="block font-bold text-xs text-wmcNavy-950 leading-tight">Qazeem Adebowale</span>
+                <span id="nav-user-role-badge" class="inline-block text-[9px] font-black uppercase tracking-wider text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">PRESIDENT</span>
+              </div>
+              <svg id="nav-user-chevron" class="w-3.5 h-3.5 text-slate-500 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+              </svg>
+            </button>
+
+            <!-- Dropdown Menu -->
+            <div id="nav-user-dropdown-menu" class="hidden absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-2xl border border-slate-200/80 py-2 z-50 divide-y divide-slate-100">
+              
+              <!-- User Info Header -->
+              <div class="px-4 py-3 bg-gradient-to-br from-slate-50 to-amber-50/40">
+                <div class="flex items-center gap-3">
+                  <div id="dd-user-avatar" class="w-10 h-10 rounded-xl bg-gradient-to-br from-wmcNavy-950 to-wmcNavy-800 text-amber-300 flex items-center justify-center font-extrabold text-sm border border-amber-400/30 shadow-sm">
+                    QA
+                  </div>
+                  <div class="min-w-0 flex-1">
+                    <span id="dd-user-name" class="block font-bold text-xs text-wmcNavy-950 truncate">Qazeem Adebowale</span>
+                    <span id="dd-user-code" class="block text-[10px] font-mono text-slate-500 truncate">WMC-2026-001</span>
+                    <span id="dd-user-role" class="inline-block mt-0.5 text-[9px] font-black uppercase tracking-wider text-amber-800 bg-amber-100 px-1.5 py-0.2 rounded">PRESIDENT</span>
+                  </div>
+                </div>
+                <div class="mt-2 pt-2 border-t border-slate-200/60 flex items-center justify-between text-[10px] text-slate-500">
+                  <span id="dd-user-email" class="truncate max-w-[170px]">medicadex@gmail.com</span>
+                  <span id="dd-user-kyc" class="font-bold text-amber-600 font-mono">KYC 0%</span>
+                </div>
+              </div>
+
+              <!-- Shortcut Actions -->
+              <div class="py-1 text-xs text-slate-700">
+                <a href="javascript:void(0)" onclick="closeAllUserDropdowns(); openProfileModal();" class="flex items-center gap-2.5 px-4 py-2.5 hover:bg-slate-50 transition group">
+                  <span class="text-base group-hover:scale-110 transition">👤</span>
+                  <div>
+                    <span class="font-semibold block text-slate-800">My Profile &amp; KYC</span>
+                    <span class="text-[10px] text-slate-400 block">Personal identity, bank, next of kin</span>
+                  </div>
+                </a>
+
+                <a href="javascript:void(0)" onclick="closeAllUserDropdowns(); openChangePasswordModal(false);" class="flex items-center gap-2.5 px-4 py-2.5 hover:bg-slate-50 transition group">
+                  <span class="text-base group-hover:scale-110 transition">🔑</span>
+                  <div>
+                    <span class="font-semibold block text-slate-800">Change Password</span>
+                    <span class="text-[10px] text-slate-400 block">Update portal access credentials</span>
+                  </div>
+                </a>
+
+                <a href="javascript:void(0)" onclick="closeAllUserDropdowns(); openElectronicIdModal();" class="flex items-center gap-2.5 px-4 py-2.5 hover:bg-slate-50 transition group">
+                  <span class="text-base group-hover:scale-110 transition">💳</span>
+                  <div>
+                    <span class="font-semibold block text-slate-800">Electronic ID Card</span>
+                    <span class="text-[10px] text-slate-400 block">Digital pass &amp; PDF certificate</span>
+                  </div>
+                </a>
+
+                <a href="javascript:void(0)" onclick="closeAllUserDropdowns(); togglePortalMode();" class="flex items-center gap-2.5 px-4 py-2.5 hover:bg-slate-50 transition group">
+                  <span class="text-base group-hover:scale-110 transition">📊</span>
+                  <div>
+                    <span id="dd-portal-toggle-title" class="font-semibold block text-slate-800">Member Portal</span>
+                    <span id="dd-portal-toggle-desc" class="text-[10px] text-slate-400 block">Switch workspace console</span>
+                  </div>
+                </a>
+              </div>
+
+              <!-- Sign Out -->
+              <div class="py-1">
+                <button type="button" onclick="closeAllUserDropdowns(); handleLogout();" class="w-full flex items-center gap-2.5 px-4 py-2.5 text-xs font-bold text-red-600 hover:bg-red-50 transition text-left group">
+                  <span class="text-base group-hover:scale-110 transition">🚪</span>
+                  <span>Sign Out of Portal</span>
+                </button>
+              </div>
+
             </div>
           </div>
 
@@ -1855,13 +2032,76 @@
               <span id="topbar-kyc-text">KYC: 0%</span>
             </button>
 
-            <div class="flex items-center gap-2 pl-2 border-l border-slate-200 cursor-pointer" onclick="navigateTo('profile')" title="My Profile">
-              <div id="topbar-user-avatar" class="w-8 h-8 rounded-xl bg-gradient-to-br from-wmcNavy-950 to-wmcNavy-800 text-amber-300 flex items-center justify-center font-extrabold text-xs border border-amber-400/30">
-                QA
-              </div>
-              <div class="text-left hidden md:block">
-                <span id="topbar-user-name" class="block font-bold text-xs text-wmcNavy-950 leading-tight">Qazeem Adebowale</span>
-                <span id="topbar-user-code" class="block text-[10px] font-mono text-slate-500">WMC-2026-001</span>
+            <!-- Member Topbar Dropdown Container -->
+            <div class="relative" id="topbar-user-dropdown-container">
+              <button id="topbar-user-dropdown-btn" type="button" onclick="toggleTopbarDropdown(event)" class="flex items-center gap-2 pl-2 border-l border-slate-200 cursor-pointer hover:bg-slate-100 py-1 px-2 rounded-xl transition" title="Account Menu">
+                <div id="topbar-user-avatar" class="w-8 h-8 rounded-xl bg-gradient-to-br from-wmcNavy-950 to-wmcNavy-800 text-amber-300 flex items-center justify-center font-extrabold text-xs border border-amber-400/30">
+                  QA
+                </div>
+                <div class="text-left hidden md:block">
+                  <span id="topbar-user-name" class="block font-bold text-xs text-wmcNavy-950 leading-tight">Qazeem Adebowale</span>
+                  <span id="topbar-user-code" class="block text-[10px] font-mono text-slate-500">WMC-2026-001</span>
+                </div>
+                <svg id="topbar-user-chevron" class="w-3.5 h-3.5 text-slate-500 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                </svg>
+              </button>
+
+              <!-- Dropdown Menu for Topbar -->
+              <div id="topbar-user-dropdown-menu" class="hidden absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-2xl border border-slate-200/80 py-2 z-50 divide-y divide-slate-100">
+                <div class="px-4 py-3 bg-gradient-to-br from-slate-50 to-amber-50/40">
+                  <div class="flex items-center gap-3">
+                    <div id="topbar-dd-user-avatar" class="w-10 h-10 rounded-xl bg-gradient-to-br from-wmcNavy-950 to-wmcNavy-800 text-amber-300 flex items-center justify-center font-extrabold text-sm border border-amber-400/30 shadow-sm">
+                      QA
+                    </div>
+                    <div class="min-w-0 flex-1">
+                      <span id="topbar-dd-user-name" class="block font-bold text-xs text-wmcNavy-950 truncate">Qazeem Adebowale</span>
+                      <span id="topbar-dd-user-code" class="block text-[10px] font-mono text-slate-500 truncate">WMC-2026-001</span>
+                      <span id="topbar-dd-user-role" class="inline-block mt-0.5 text-[9px] font-black uppercase tracking-wider text-amber-800 bg-amber-100 px-1.5 py-0.2 rounded">PRESIDENT</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="py-1 text-xs text-slate-700">
+                  <a href="javascript:void(0)" onclick="closeAllUserDropdowns(); openProfileModal();" class="flex items-center gap-2.5 px-4 py-2.5 hover:bg-slate-50 transition group">
+                    <span class="text-base group-hover:scale-110 transition">👤</span>
+                    <div>
+                      <span class="font-semibold block text-slate-800">My Profile &amp; KYC</span>
+                      <span class="text-[10px] text-slate-400 block">Personal identity, bank, next of kin</span>
+                    </div>
+                  </a>
+
+                  <a href="javascript:void(0)" onclick="closeAllUserDropdowns(); openChangePasswordModal(false);" class="flex items-center gap-2.5 px-4 py-2.5 hover:bg-slate-50 transition group">
+                    <span class="text-base group-hover:scale-110 transition">🔑</span>
+                    <div>
+                      <span class="font-semibold block text-slate-800">Change Password</span>
+                      <span class="text-[10px] text-slate-400 block">Update portal access credentials</span>
+                    </div>
+                  </a>
+
+                  <a href="javascript:void(0)" onclick="closeAllUserDropdowns(); openElectronicIdModal();" class="flex items-center gap-2.5 px-4 py-2.5 hover:bg-slate-50 transition group">
+                    <span class="text-base group-hover:scale-110 transition">💳</span>
+                    <div>
+                      <span class="font-semibold block text-slate-800">Electronic ID Card</span>
+                      <span class="text-[10px] text-slate-400 block">Digital pass &amp; PDF certificate</span>
+                    </div>
+                  </a>
+
+                  <a href="javascript:void(0)" onclick="closeAllUserDropdowns(); togglePortalMode();" class="flex items-center gap-2.5 px-4 py-2.5 hover:bg-slate-50 transition group">
+                    <span class="text-base group-hover:scale-110 transition">📊</span>
+                    <div>
+                      <span id="topbar-dd-portal-toggle-title" class="font-semibold block text-slate-800">Public Site</span>
+                      <span class="text-[10px] text-slate-400 block">Switch to main cooperative site</span>
+                    </div>
+                  </a>
+                </div>
+
+                <div class="py-1">
+                  <button type="button" onclick="closeAllUserDropdowns(); handleLogout();" class="w-full flex items-center gap-2.5 px-4 py-2.5 text-xs font-bold text-red-600 hover:bg-red-50 transition text-left group">
+                    <span class="text-base group-hover:scale-110 transition">🚪</span>
+                    <span>Sign Out of Portal</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -3734,6 +3974,105 @@
                   <button type="submit" class="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition shadow-md flex items-center justify-center gap-2 active:scale-95">
                     <span>💳 Post Direct Credit</span>
                   </button>
+                </div>
+              </form>
+            </div>
+
+            <!-- Direct Executive Debit & Electronic Bank Payout Desk Form -->
+            <div class="glass-panel p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6">
+              <div class="pb-3 border-b border-slate-200">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-rose-100 text-rose-800 border border-rose-200">
+                    Double-Entry Statutory Outflow (Debit)
+                  </span>
+                  <span class="text-xs text-slate-400 font-mono">FinSec &bull; Treasurer &bull; President</span>
+                </div>
+                <h4 class="text-base font-bold text-wmcNavy-950">Issue Direct Member Account Debit / Bank Payout</h4>
+                <p class="text-xs text-slate-500">
+                  Disburse approved withdrawals or payouts with automatic dynamic calculation of Polaris Bank charges (CAMF 0.1%, Stamp Duty ₦50, VAT 7.5%, NIP transfer fee) and real-time General Ledger posting.
+                </p>
+              </div>
+
+              <form id="form-direct-debit" onsubmit="handleDirectDebitSubmit(event)" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
+                <div>
+                  <label class="block font-bold text-slate-700 mb-1">Beneficiary Member *</label>
+                  <select id="direct-debit-member-id" required onchange="updateDirectDebitMemberBalance()" class="w-full p-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-rose-500">
+                    <option value="">Select Cooperator...</option>
+                  </select>
+                  <p id="direct-debit-member-bal" class="text-[11px] text-slate-500 mt-1 font-mono"></p>
+                </div>
+
+                <div>
+                  <label class="block font-bold text-slate-700 mb-1">Source Account / Category *</label>
+                  <select id="direct-debit-category" required class="w-full p-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-rose-500">
+                    <option value="ORDINARY_SAVINGS">Ordinary Savings (Default)</option>
+                    <option value="TARGET_SAVINGS">Target Savings Payout</option>
+                    <option value="WELFARE_GRANT">Welfare Assistance Grant</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label class="block font-bold text-slate-700 mb-1">Gross Payout Amount (₦) *</label>
+                  <input type="number" id="direct-debit-amount" min="100" step="100" required oninput="calculateDebitChargesPreview()" placeholder="e.g. 50000" class="w-full p-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-rose-500 font-mono font-bold" />
+                </div>
+
+                <div>
+                  <label class="block font-bold text-slate-700 mb-1">Beneficiary Commercial Bank</label>
+                  <input type="text" id="direct-debit-bank-name" placeholder="e.g. Polaris, GTBank, Zenith" class="w-full p-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-rose-500" />
+                </div>
+
+                <div>
+                  <label class="block font-bold text-slate-700 mb-1">Beneficiary Account Number</label>
+                  <input type="text" id="direct-debit-account-number" placeholder="10-digit NUBAN" maxlength="10" class="w-full p-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-rose-500 font-mono" />
+                </div>
+
+                <div class="sm:col-span-2 lg:col-span-2">
+                  <label class="block font-bold text-slate-700 mb-1">Mandatory Statutory Narration / Justification *</label>
+                  <input type="text" id="direct-debit-narration" required placeholder="e.g. Approved emergency savings withdrawal per Executive Resolution #12" class="w-full p-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-rose-500" />
+                </div>
+
+                <div class="sm:col-span-2 lg:col-span-1 flex items-end">
+                  <button type="submit" id="btn-submit-direct-debit" class="w-full py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs transition shadow-md flex items-center justify-center gap-2 active:scale-95">
+                    <span>💸 Post Direct Debit Payout</span>
+                  </button>
+                </div>
+
+                <!-- Dynamic Real-Time Bank Charges Preview Card -->
+                <div id="direct-debit-charges-preview" class="sm:col-span-2 lg:col-span-4 p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs hidden">
+                  <div class="flex items-center justify-between font-bold text-slate-800 mb-2 pb-2 border-b border-slate-200">
+                    <span class="flex items-center gap-1.5 text-indigo-950 font-bold">
+                      🏦 Polaris Bank Outflow & Debit Charges Breakdown (Live Calculation)
+                    </span>
+                    <span id="preview-charges-bearer" class="text-[10px] uppercase px-2 py-0.5 rounded font-mono bg-blue-100 text-blue-800 font-bold">
+                      BEARER: SOCIETY
+                    </span>
+                  </div>
+                  <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                    <div class="p-2.5 rounded-lg bg-white border border-slate-200">
+                      <span class="text-[10px] text-slate-400 block font-bold">Gross Amount</span>
+                      <span id="preview-gross-amt" class="font-bold text-slate-800 font-mono">₦0.00</span>
+                    </div>
+                    <div class="p-2.5 rounded-lg bg-white border border-slate-200">
+                      <span class="text-[10px] text-slate-400 block font-bold">CAMF (0.1%)</span>
+                      <span id="preview-camf-amt" class="font-bold text-purple-700 font-mono">₦0.00</span>
+                    </div>
+                    <div class="p-2.5 rounded-lg bg-white border border-slate-200">
+                      <span class="text-[10px] text-slate-400 block font-bold">Stamp Duty (EMTL)</span>
+                      <span id="preview-stamp-amt" class="font-bold text-amber-700 font-mono">₦0.00</span>
+                    </div>
+                    <div class="p-2.5 rounded-lg bg-white border border-slate-200">
+                      <span class="text-[10px] text-slate-400 block font-bold">VAT on Charges (7.5%)</span>
+                      <span id="preview-vat-amt" class="font-bold text-rose-700 font-mono">₦0.00</span>
+                    </div>
+                    <div class="p-2.5 rounded-lg bg-white border border-slate-200">
+                      <span class="text-[10px] text-slate-400 block font-bold">Total Bank Charges</span>
+                      <span id="preview-total-charges" class="font-black text-rose-600 font-mono">₦0.00</span>
+                    </div>
+                    <div class="p-2.5 rounded-lg bg-indigo-50 border border-indigo-200">
+                      <span class="text-[10px] text-indigo-700 block font-bold">Total Polaris Escrow Outflow</span>
+                      <span id="preview-total-outflow" class="font-black text-indigo-950 font-mono">₦0.00</span>
+                    </div>
+                  </div>
                 </div>
               </form>
             </div>
@@ -5772,12 +6111,12 @@
                 <!-- Secretary Signature -->
                 <div class="text-center">
                   <div class="h-8 flex items-center justify-center">
-                    <span class="font-serif italic font-bold text-indigo-950 text-sm tracking-wide" style="font-family: 'Brush Script MT', 'Dancing Script', cursive, serif;">
-                      Evelyn Omokosi
+                    <span id="idcard-sec-signature" class="font-serif italic font-bold text-indigo-950 text-sm tracking-wide" style="font-family: 'Brush Script MT', 'Dancing Script', cursive, serif;">
+                      Olaleke Olaoye
                     </span>
                   </div>
                   <div class="border-t border-slate-400/80 pt-0.5">
-                    <span class="text-[8px] uppercase font-bold text-slate-700 block leading-tight">General Secretary</span>
+                    <span id="idcard-sec-title" class="text-[8px] uppercase font-bold text-slate-700 block leading-tight">General Secretary</span>
                     <span class="text-[7px] text-slate-400 block font-mono">Signatory 1</span>
                   </div>
                 </div>
@@ -5785,12 +6124,12 @@
                 <!-- President Signature -->
                 <div class="text-center">
                   <div class="h-8 flex items-center justify-center">
-                    <span class="font-serif italic font-bold text-amber-950 text-sm tracking-wide" style="font-family: 'Brush Script MT', 'Dancing Script', cursive, serif;">
+                    <span id="idcard-pres-signature" class="font-serif italic font-bold text-amber-950 text-sm tracking-wide" style="font-family: 'Brush Script MT', 'Dancing Script', cursive, serif;">
                       Qazeem Adebowale
                     </span>
                   </div>
                   <div class="border-t border-slate-400/80 pt-0.5">
-                    <span class="text-[8px] uppercase font-bold text-slate-700 block leading-tight">President &amp; Chairman</span>
+                    <span id="idcard-pres-title" class="text-[8px] uppercase font-bold text-slate-700 block leading-tight">President &amp; Chairman</span>
                     <span class="text-[7px] text-slate-400 block font-mono">Signatory 2</span>
                   </div>
                 </div>

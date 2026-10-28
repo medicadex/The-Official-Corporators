@@ -1,0 +1,3718 @@
+-- =====================================================================
+-- WEALTHBRIDGE MULTIPURPOSE COOPERATIVE SOCIETY LIMITED (WMC)
+-- COMPLETE SUPABASE POSTGRESQL SCHEMA (39 TABLES)
+-- Statutory Jurisdiction: Lagos State Cooperative Societies Law (Cap C15)
+-- Official Secretariat Email: wealthbridge.coopsociety@gmail.com
+-- =====================================================================
+
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- ---------------------------------------------------------------------
+-- Table: system_config
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.system_config (
+    id SERIAL PRIMARY KEY,
+    config_key VARCHAR(64) NOT NULL UNIQUE,
+    config_value VARCHAR(255) NOT NULL,
+    description VARCHAR(255),
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ---------------------------------------------------------------------
+-- Table: roles
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.roles (
+    id SERIAL PRIMARY KEY,
+    role_code VARCHAR(50) NOT NULL UNIQUE,
+    role_name VARCHAR(100) NOT NULL,
+    description TEXT,
+    is_system_role BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ---------------------------------------------------------------------
+-- Table: permissions
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.permissions (
+    id SERIAL PRIMARY KEY,
+    perm_key VARCHAR(60) NOT NULL UNIQUE,
+    perm_name VARCHAR(120) NOT NULL,
+    module VARCHAR(50) NOT NULL,
+    description TEXT
+);
+
+-- ---------------------------------------------------------------------
+-- Table: role_permissions
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.role_permissions (
+    role_id INTEGER NOT NULL,
+    permission_id INTEGER NOT NULL,
+    PRIMARY KEY (role_id, permission_id)
+);
+
+-- ---------------------------------------------------------------------
+-- Table: admin_users
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.admin_users (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(50) NOT NULL UNIQUE,
+    email VARCHAR(100) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    full_name VARCHAR(100) NOT NULL,
+    role VARCHAR(50) NOT NULL DEFAULT 'SUPER_ADMIN',
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    last_login TIMESTAMPTZ
+);
+
+-- ---------------------------------------------------------------------
+-- Table: members
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.members (
+    id SERIAL PRIMARY KEY,
+    member_code VARCHAR(20) NOT NULL UNIQUE,
+    first_name VARCHAR(50) NOT NULL,
+    last_name VARCHAR(50) NOT NULL,
+    other_names VARCHAR(50),
+    email VARCHAR(100) NOT NULL UNIQUE,
+    password_hash VARCHAR(255),
+    phone VARCHAR(20) NOT NULL UNIQUE,
+    gender TEXT CHECK (gender IN ('MALE','FEMALE')) NOT NULL,
+    marital_status TEXT CHECK (marital_status IN ('SINGLE','MARRIED','DIVORCED','WIDOWED')) DEFAULT 'SINGLE',
+    date_of_birth DATE,
+    residential_address TEXT NOT NULL,
+    identification_type TEXT CHECK (identification_type IN ('NIN','PASSPORT','VOTERS_CARD','DRIVERS_LICENSE')) NOT NULL,
+    identification_number VARCHAR(50) NOT NULL,
+    passport_photo TEXT,
+    employment_status TEXT CHECK (employment_status IN ('SALARY_EARNER','BUSINESS_OWNER','PROFESSIONAL','OTHER')) NOT NULL,
+    employer_or_business_name VARCHAR(150),
+    bank_name VARCHAR(100),
+    bank_account_number VARCHAR(20),
+    bank_account_name VARCHAR(150),
+    bvn VARCHAR(20),
+    monthly_income_verified NUMERIC(15,2) DEFAULT 0.00,
+    contribution_tier TEXT CHECK (contribution_tier IN ('STANDARD','PLUS','PREMIUM')) DEFAULT 'STANDARD',
+    dividend_payout_preference TEXT CHECK (dividend_payout_preference IN ('SAVINGS_CREDIT','BANK_TRANSFER')) DEFAULT 'SAVINGS_CREDIT',
+    kyc_completion_percent INTEGER DEFAULT 20,
+    pending_email VARCHAR(100),
+    pending_phone VARCHAR(20),
+    pending_address TEXT,
+    contact_change_status TEXT CHECK (contact_change_status IN ('NONE','PENDING_APPROVAL','APPROVED','REJECTED')) DEFAULT 'NONE',
+    contact_change_requested_at TIMESTAMPTZ,
+    contact_change_reviewed_by INTEGER,
+    contact_change_reviewed_at TIMESTAMPTZ,
+    status TEXT CHECK (status IN ('PENDING_KYC','ACTIVE','SUSPENDED','EXITED','DECEASED')) NOT NULL DEFAULT 'PENDING_KYC',
+    admission_date DATE,
+    exit_date DATE,
+    last_login TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    paystack_customer_code VARCHAR(100),
+    paystack_dva_account_number VARCHAR(20),
+    paystack_dva_bank_name VARCHAR(100),
+    paystack_dva_account_name VARCHAR(150),
+    paystack_auth_code VARCHAR(100)
+);
+
+-- ---------------------------------------------------------------------
+-- Table: next_of_kin
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.next_of_kin (
+    id SERIAL PRIMARY KEY,
+    member_id INTEGER NOT NULL,
+    full_name VARCHAR(100) NOT NULL,
+    relationship VARCHAR(50) NOT NULL,
+    phone VARCHAR(20) NOT NULL,
+    email VARCHAR(100),
+    residential_address TEXT NOT NULL,
+    allocation_percentage NUMERIC(5,2) DEFAULT 100.00,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ---------------------------------------------------------------------
+-- Table: member_roles
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.member_roles (
+    id SERIAL PRIMARY KEY,
+    member_id INTEGER NOT NULL,
+    role_id INTEGER NOT NULL,
+    assigned_by_user_id INTEGER,
+    assigned_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ---------------------------------------------------------------------
+-- Table: officers
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.officers (
+    id SERIAL PRIMARY KEY,
+    member_id INTEGER NOT NULL,
+    portfolio TEXT CHECK (portfolio IN ('PRESIDENT','VICE_PRESIDENT','GENERAL_SECRETARY','TREASURER','FINANCIAL_SECRETARY','LEGAL_COMPLIANCE_LEAD','TECHNOLOGY_SYSTEMS_LEAD','WELFARE_SECRETARY','PUBLIC_RELATIONS_OFFICER')) NOT NULL,
+    appointment_date DATE NOT NULL,
+    tenure_end_date DATE,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ---------------------------------------------------------------------
+-- Table: chart_of_accounts
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.chart_of_accounts (
+    id SERIAL PRIMARY KEY,
+    account_code VARCHAR(16) NOT NULL UNIQUE,
+    account_name VARCHAR(128) NOT NULL,
+    account_type TEXT CHECK (account_type IN ('ASSET','LIABILITY','EQUITY','INCOME','EXPENSE')) NOT NULL,
+    description VARCHAR(255),
+    is_active BOOLEAN DEFAULT TRUE,
+    is_system_controlled BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ---------------------------------------------------------------------
+-- Table: journal_entries
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.journal_entries (
+    id SERIAL PRIMARY KEY,
+    entry_number VARCHAR(64) NOT NULL UNIQUE,
+    entry_date DATE NOT NULL,
+    source_module TEXT CHECK (source_module IN ('REMITTANCE_WATERFALL','LOAN_DISBURSEMENT','LOAN_REPAYMENT','EXIT_SETTLEMENT','WELFARE_PAYOUT','DIVIDEND_DISTRIBUTION','MANUAL_JOURNAL','LOAN_FORECLOSURE')) NOT NULL,
+    source_reference VARCHAR(128),
+    narration TEXT NOT NULL,
+    total_debit NUMERIC(15,2) NOT NULL,
+    total_credit NUMERIC(15,2) NOT NULL,
+    is_balanced BOOLEAN DEFAULT TRUE,
+    status TEXT CHECK (status IN ('DRAFT','POSTED','REJECTED')) DEFAULT 'POSTED',
+    created_by INTEGER,
+    approved_by INTEGER,
+    approved_at TIMESTAMPTZ,
+    supporting_doc_url VARCHAR(255),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ---------------------------------------------------------------------
+-- Table: journal_entry_lines
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.journal_entry_lines (
+    id SERIAL PRIMARY KEY,
+    journal_entry_id INTEGER NOT NULL,
+    account_id INTEGER NOT NULL,
+    line_type TEXT CHECK (line_type IN ('DEBIT','CREDIT')) NOT NULL,
+    amount NUMERIC(15,2) NOT NULL,
+    memo VARCHAR(255),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ---------------------------------------------------------------------
+-- Table: savings_accounts
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.savings_accounts (
+    id SERIAL PRIMARY KEY,
+    member_id INTEGER NOT NULL UNIQUE,
+    total_balance NUMERIC(15,2) DEFAULT 0.00,
+    encumbered_balance NUMERIC(15,2) DEFAULT 0.00,
+    available_balance NUMERIC(15,2) GENERATED ALWAYS AS (total_balance - encumbered_balance) STORED,
+    last_updated TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ---------------------------------------------------------------------
+-- Table: share_accounts
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.share_accounts (
+    id SERIAL PRIMARY KEY,
+    member_id INTEGER NOT NULL UNIQUE,
+    units_held INTEGER DEFAULT 0,
+    paid_up_amount NUMERIC(15,2) DEFAULT 0.00,
+    is_minimum_met BOOLEAN DEFAULT FALSE,
+    benefits_qualified BOOLEAN DEFAULT FALSE,
+    last_updated TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ---------------------------------------------------------------------
+-- Table: welfare_accounts
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.welfare_accounts (
+    id SERIAL PRIMARY KEY,
+    member_id INTEGER NOT NULL UNIQUE,
+    cumulative_contributions NUMERIC(15,2) DEFAULT 0.00,
+    consecutive_months_active INTEGER DEFAULT 0,
+    last_contribution_date DATE,
+    last_updated TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ---------------------------------------------------------------------
+-- Table: target_savings_accounts
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.target_savings_accounts (
+    id SERIAL PRIMARY KEY,
+    member_id INTEGER NOT NULL,
+    target_type TEXT CHECK (target_type IN ('BIRTHDAY','CHRISTMAS','ILEYA','BUILDING','PILGRIMAGE','EDUCATION','OTHERS')) NOT NULL,
+    title VARCHAR(150) NOT NULL,
+    target_amount NUMERIC(15,2) NOT NULL,
+    current_balance NUMERIC(15,2) NOT NULL DEFAULT 0.00,
+    start_date DATE NOT NULL,
+    maturity_date DATE NOT NULL,
+    auto_save_amount NUMERIC(15,2) DEFAULT 0.00,
+    status TEXT CHECK (status IN ('ACTIVE','MATURED','WITHDRAWN','CANCELLED')) NOT NULL DEFAULT 'ACTIVE',
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ---------------------------------------------------------------------
+-- Table: target_savings_transactions
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.target_savings_transactions (
+    id SERIAL PRIMARY KEY,
+    target_account_id INTEGER NOT NULL,
+    member_id INTEGER NOT NULL,
+    transaction_type TEXT CHECK (transaction_type IN ('DEPOSIT','WITHDRAWAL','INTEREST_DIVIDEND')) NOT NULL,
+    amount NUMERIC(15,2) NOT NULL,
+    balance_after NUMERIC(15,2) NOT NULL,
+    payment_method VARCHAR(50) DEFAULT 'POLARIS_BANK_TRANSFER',
+    channel_reference VARCHAR(100) NOT NULL,
+    narration TEXT,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ---------------------------------------------------------------------
+-- Table: transactions
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.transactions (
+    id SERIAL PRIMARY KEY,
+    transaction_ref VARCHAR(64) NOT NULL UNIQUE,
+    member_id INTEGER NOT NULL,
+    transaction_type TEXT CHECK (transaction_type IN ('CREDIT','DEBIT')) NOT NULL,
+    ledger_category TEXT CHECK (ledger_category IN ('SAVINGS','SHARE_CAPITAL','WELFARE_FUND','REGISTRATION_FEE','PASSBOOK_FEE','LOAN_DISBURSEMENT','LOAN_REPAYMENT','WELFARE_GRANT','DISCIPLINARY_FINE','MARKETPLACE_SETTLEMENT')) NOT NULL,
+    amount NUMERIC(15,2) NOT NULL,
+    payment_method TEXT CHECK (payment_method IN ('POLARIS_BANK_TRANSFER','DIRECT_DEBIT','ONLINE_GATEWAY','INTERNAL_SET_OFF')) NOT NULL,
+    channel_reference VARCHAR(100),
+    narration VARCHAR(255) NOT NULL,
+    status TEXT CHECK (status IN ('PENDING','VERIFIED','REJECTED')) DEFAULT 'PENDING',
+    verified_by_officer_id INTEGER,
+    transaction_date TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ---------------------------------------------------------------------
+-- Table: payment_advices
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.payment_advices (
+    id SERIAL PRIMARY KEY,
+    advice_reference VARCHAR(64) NOT NULL UNIQUE,
+    member_id INTEGER NOT NULL,
+    billing_period VARCHAR(7) NOT NULL,
+    issue_date DATE NOT NULL,
+    due_date DATE NOT NULL,
+    tier_at_issuance TEXT CHECK (tier_at_issuance IN ('STANDARD','PLUS','PREMIUM')) NOT NULL DEFAULT 'STANDARD',
+    amount_fines NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    amount_registration_fee NUMERIC(15,2) NOT NULL DEFAULT 0.00,
+    amount_loan_repayment NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    amount_welfare NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    amount_share_capital NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    amount_regular_savings NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    amount_target_savings NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    amount_arrears NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    total_expected_amount NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    paid_fines NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    paid_registration NUMERIC(15,2) NOT NULL DEFAULT 0.00,
+    paid_loan NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    paid_welfare NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    paid_shares NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    paid_savings NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    paid_targets NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    total_amount_paid NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    outstanding_balance NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    status TEXT CHECK (status IN ('DUE','PARTIALLY_PAID','FULLY_SETTLED','OVERDUE')) NOT NULL DEFAULT 'DUE',
+    admin_notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ---------------------------------------------------------------------
+-- Table: payment_advice_distributions
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.payment_advice_distributions (
+    id SERIAL PRIMARY KEY,
+    advice_id INTEGER NOT NULL,
+    member_id INTEGER NOT NULL,
+    payment_reference VARCHAR(128) NOT NULL,
+    payment_method VARCHAR(64) NOT NULL DEFAULT 'PAYSTACK_DVA',
+    total_payment_received NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    allocated_fines NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    allocated_registration NUMERIC(15,2) DEFAULT 0.00,
+    allocated_loan NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    allocated_welfare NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    allocated_shares NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    allocated_savings NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    allocated_targets NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    allocated_surplus_savings NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    narration VARCHAR(255),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ---------------------------------------------------------------------
+-- Table: disciplinary_fines
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.disciplinary_fines (
+    id SERIAL PRIMARY KEY,
+    member_id INTEGER NOT NULL,
+    infraction_type TEXT CHECK (infraction_type IN ('LATE_MONTHLY_REMITTANCE','MEETING_ABSENTEEISM','MEETING_LATENESS','UNAUTHORIZED_REPRESENTATION','CODE_OF_CONDUCT_BREACH')) NOT NULL,
+    fine_amount NUMERIC(15,2) NOT NULL,
+    reason TEXT NOT NULL,
+    status TEXT CHECK (status IN ('UNPAID','SETTLED','WAIVED')) DEFAULT 'UNPAID',
+    issued_date DATE NOT NULL,
+    settled_date DATE,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ---------------------------------------------------------------------
+-- Table: loan_products
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.loan_products (
+    id SERIAL PRIMARY KEY,
+    product_name VARCHAR(100) NOT NULL,
+    product_code VARCHAR(30) NOT NULL UNIQUE,
+    description TEXT,
+    min_membership_months INTEGER DEFAULT 6,
+    max_multiplier_of_savings NUMERIC(3,1) DEFAULT 2.0,
+    max_principal_ceiling NUMERIC(15,2) NOT NULL,
+    admin_cost_fee_percent NUMERIC(5,2) NOT NULL,
+    min_tenure_months INTEGER DEFAULT 1,
+    max_tenure_months INTEGER DEFAULT 12,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ---------------------------------------------------------------------
+-- Table: loans
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.loans (
+    id SERIAL PRIMARY KEY,
+    loan_reference VARCHAR(50) NOT NULL UNIQUE,
+    member_id INTEGER NOT NULL,
+    product_id INTEGER NOT NULL,
+    principal_amount NUMERIC(15,2) NOT NULL,
+    admin_cost_fee NUMERIC(15,2) NOT NULL,
+    total_amount_payable NUMERIC(15,2) NOT NULL,
+    tenure_months INTEGER NOT NULL,
+    monthly_installment NUMERIC(15,2) NOT NULL,
+    total_paid NUMERIC(15,2) DEFAULT 0.00,
+    outstanding_balance NUMERIC(15,2) NOT NULL,
+    status VARCHAR(32) NOT NULL DEFAULT 'PENDING',
+    application_date DATE NOT NULL,
+    approval_date DATE,
+    disbursement_date DATE,
+    next_due_date DATE,
+    maturity_date DATE,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    approval_level_percent INTEGER DEFAULT 0,
+    current_approval_stage VARCHAR(40) DEFAULT 'CREDIT_COMMITTEE',
+    presidential_override BOOLEAN DEFAULT FALSE,
+    decline_reason TEXT,
+    declined_by_officer_id INTEGER,
+    declined_by_role VARCHAR(50),
+    purpose_narration TEXT
+);
+
+-- ---------------------------------------------------------------------
+-- Table: loan_approval_steps
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.loan_approval_steps (
+    id SERIAL PRIMARY KEY,
+    loan_id INTEGER NOT NULL,
+    step_name VARCHAR(50) NOT NULL,
+    officer_id INTEGER NOT NULL,
+    officer_role VARCHAR(80) NOT NULL,
+    action TEXT CHECK (action IN ('APPROVED','DECLINED','OVERRIDDEN')) NOT NULL,
+    comments TEXT,
+    percentage_granted INTEGER NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ---------------------------------------------------------------------
+-- Table: loan_guarantors
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.loan_guarantors (
+    id SERIAL PRIMARY KEY,
+    loan_id INTEGER NOT NULL,
+    guarantor_member_id INTEGER NOT NULL,
+    guaranteed_amount NUMERIC(15,2) NOT NULL,
+    lien_encumbered_amount NUMERIC(15,2) NOT NULL DEFAULT 0.00,
+    status TEXT CHECK (status IN ('PENDING_CONSENT','ACCEPTED','DECLINED','RELEASED','INVOKED')) NOT NULL DEFAULT 'PENDING_CONSENT',
+    accepted_at TIMESTAMPTZ,
+    released_at TIMESTAMPTZ
+);
+
+-- ---------------------------------------------------------------------
+-- Table: loan_repayments
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.loan_repayments (
+    id SERIAL PRIMARY KEY,
+    loan_id INTEGER NOT NULL,
+    installment_number INTEGER NOT NULL,
+    due_date DATE NOT NULL,
+    amount_due NUMERIC(15,2) NOT NULL,
+    amount_paid NUMERIC(15,2) DEFAULT 0.00,
+    paid_date TIMESTAMPTZ,
+    transaction_ref VARCHAR(64),
+    status TEXT CHECK (status IN ('PENDING','PARTIAL','PAID','OVERDUE')) DEFAULT 'PENDING'
+);
+
+-- ---------------------------------------------------------------------
+-- Table: loan_appeals
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.loan_appeals (
+    id SERIAL PRIMARY KEY,
+    loan_id INTEGER NOT NULL,
+    member_id INTEGER NOT NULL,
+    appeal_comments TEXT NOT NULL,
+    attached_document_path VARCHAR(255),
+    document_name VARCHAR(150),
+    document_mime_type VARCHAR(80),
+    target_officer_id INTEGER,
+    status VARCHAR(32) NOT NULL DEFAULT 'PENDING_REVIEW',
+    review_response TEXT,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    resolved_at TIMESTAMPTZ
+);
+
+-- ---------------------------------------------------------------------
+-- Table: welfare_claims
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.welfare_claims (
+    id SERIAL PRIMARY KEY,
+    claim_code VARCHAR(50) NOT NULL UNIQUE,
+    member_id INTEGER NOT NULL,
+    benefit_category TEXT CHECK (benefit_category IN ('MEMBER_BEREAVEMENT','SPOUSE_BEREAVEMENT','CHILD_BEREAVEMENT','PARENT_BEREAVEMENT','EMERGENCY_MEDICAL_GRANT','MEMBER_WEDDING','CHILDBIRTH_NAMING','RETIREMENT_LANDMARK')) NOT NULL,
+    tariff_amount NUMERIC(15,2) NOT NULL,
+    amount_disbursed NUMERIC(15,2) DEFAULT 0.00,
+    evidence_doc_reference VARCHAR(255),
+    status TEXT CHECK (status IN ('SUBMITTED','VETTED','EXECUTIVE_APPROVED','REJECTED','DISBURSED')) DEFAULT 'SUBMITTED',
+    submission_date DATE NOT NULL,
+    disbursed_date DATE,
+    welfare_secretary_notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ---------------------------------------------------------------------
+-- Table: marketplace_merchants
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.marketplace_merchants (
+    id SERIAL PRIMARY KEY,
+    member_id INTEGER NOT NULL UNIQUE,
+    business_trading_name VARCHAR(150) NOT NULL,
+    category VARCHAR(100) NOT NULL,
+    status TEXT CHECK (status IN ('PENDING_APPROVAL','APPROVED','SUSPENDED')) DEFAULT 'PENDING_APPROVAL',
+    registered_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ---------------------------------------------------------------------
+-- Table: marketplace_products
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.marketplace_products (
+    id SERIAL PRIMARY KEY,
+    merchant_id INTEGER NOT NULL,
+    product_title VARCHAR(150) NOT NULL,
+    description TEXT,
+    price NUMERIC(15,2) NOT NULL,
+    is_financing_eligible BOOLEAN DEFAULT TRUE,
+    stock_quantity INTEGER DEFAULT 0,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ---------------------------------------------------------------------
+-- Table: general_meetings
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.general_meetings (
+    id SERIAL PRIMARY KEY,
+    meeting_type TEXT CHECK (meeting_type IN ('ANNUAL_GENERAL_MEETING','SPECIAL_GENERAL_MEETING','MONTHLY_EXECUTIVE')) NOT NULL,
+    meeting_title VARCHAR(150) NOT NULL,
+    meeting_date DATE NOT NULL,
+    minute_reference_doc VARCHAR(255),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ---------------------------------------------------------------------
+-- Table: meeting_attendance
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.meeting_attendance (
+    id SERIAL PRIMARY KEY,
+    meeting_id INTEGER NOT NULL,
+    member_id INTEGER NOT NULL,
+    attendance_status TEXT CHECK (attendance_status IN ('PRESENT','ABSENT_WITH_APOLOGY','ABSENT_WITHOUT_APOLOGY')) NOT NULL,
+    arrival_time TIME
+);
+
+-- ---------------------------------------------------------------------
+-- Table: member_exits
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.member_exits (
+    id SERIAL PRIMARY KEY,
+    member_id INTEGER NOT NULL,
+    exit_type TEXT CHECK (exit_type IN ('VOLUNTARY_WITHDRAWAL','DEATH_ESTATE_SETTLEMENT','EXPULSION')) NOT NULL DEFAULT 'VOLUNTARY_WITHDRAWAL',
+    notice_date DATE NOT NULL,
+    statutory_notice_expiry_date DATE NOT NULL,
+    reason TEXT,
+    supporting_doc_url VARCHAR(500),
+    nok_claimant_name VARCHAR(150),
+    nok_claimant_phone VARCHAR(30),
+    nok_relationship VARCHAR(50),
+    status TEXT CHECK (status IN ('PENDING_CLEARANCE','FINANCIALLY_CLEARED','SETTLED_REFUNDED','REJECTED')) NOT NULL DEFAULT 'PENDING_CLEARANCE',
+    total_savings_at_exit NUMERIC(15,2) NOT NULL DEFAULT 0.00,
+    total_target_savings_at_exit NUMERIC(15,2) NOT NULL DEFAULT 0.00,
+    total_shares_at_exit NUMERIC(15,2) NOT NULL DEFAULT 0.00,
+    outstanding_loans_at_exit NUMERIC(15,2) NOT NULL DEFAULT 0.00,
+    outstanding_fines_at_exit NUMERIC(15,2) NOT NULL DEFAULT 0.00,
+    active_guarantor_commitments_count INTEGER NOT NULL DEFAULT 0,
+    exit_processing_fee NUMERIC(15,2) NOT NULL DEFAULT 0.00,
+    bereavement_welfare_grant NUMERIC(15,2) NOT NULL DEFAULT 0.00,
+    net_refund_amount NUMERIC(15,2) NOT NULL DEFAULT 0.00,
+    cleared_by_officer_id INTEGER,
+    approved_by_president_id INTEGER,
+    rejection_reason TEXT,
+    refund_payment_ref VARCHAR(100),
+    refund_disbursed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ---------------------------------------------------------------------
+-- Table: dividend_periods
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.dividend_periods (
+    id SERIAL PRIMARY KEY,
+    period_name VARCHAR(64) NOT NULL,
+    financial_year_start DATE NOT NULL,
+    financial_year_end DATE NOT NULL,
+    net_surplus_amount NUMERIC(15,2) NOT NULL,
+    statutory_reserve_percent NUMERIC(5,2) DEFAULT 50.00,
+    statutory_reserve_amount NUMERIC(15,2) NOT NULL,
+    distributable_pool_amount NUMERIC(15,2) NOT NULL,
+    weight_share_capital_percent NUMERIC(5,2) DEFAULT 60.00,
+    weight_savings_volume_percent NUMERIC(5,2) DEFAULT 40.00,
+    weight_patronage_percent NUMERIC(5,2) DEFAULT 0.00,
+    min_share_units_required INTEGER DEFAULT 5,
+    min_active_months_required INTEGER DEFAULT 6,
+    disqualify_active_arrears BOOLEAN DEFAULT TRUE,
+    total_qualified_members INTEGER DEFAULT 0,
+    total_disqualified_members INTEGER DEFAULT 0,
+    status TEXT CHECK (status IN ('DRAFT_SIMULATION','AUDIT_REVIEW','APPROVED_POSTED','CANCELLED')) DEFAULT 'DRAFT_SIMULATION',
+    simulated_by_user_id INTEGER,
+    approved_by_president_id INTEGER,
+    approved_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ---------------------------------------------------------------------
+-- Table: dividend_allocations
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.dividend_allocations (
+    id SERIAL PRIMARY KEY,
+    dividend_period_id INTEGER NOT NULL,
+    member_id INTEGER NOT NULL,
+    shares_held INTEGER NOT NULL,
+    share_equity_amount NUMERIC(15,2) NOT NULL,
+    savings_balance NUMERIC(15,2) NOT NULL,
+    loan_patronage_volume NUMERIC(15,2) DEFAULT 0.00,
+    is_qualified BOOLEAN NOT NULL,
+    disqualification_reason VARCHAR(255),
+    dividend_from_shares NUMERIC(15,2) DEFAULT 0.00,
+    dividend_from_savings NUMERIC(15,2) DEFAULT 0.00,
+    dividend_from_patronage NUMERIC(15,2) DEFAULT 0.00,
+    total_dividend_payable NUMERIC(15,2) NOT NULL,
+    payout_preference TEXT CHECK (payout_preference IN ('SAVINGS_CREDIT','BANK_TRANSFER')) DEFAULT 'SAVINGS_CREDIT',
+    payout_status TEXT CHECK (payout_status IN ('PENDING','CREDITED_TO_SAVINGS','DISBURSED_TO_BANK')) DEFAULT 'PENDING',
+    payout_reference VARCHAR(128),
+    settled_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ---------------------------------------------------------------------
+-- Table: system_notifications
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.system_notifications (
+    id SERIAL PRIMARY KEY,
+    recipient_type TEXT CHECK (recipient_type IN ('MEMBER','OFFICER','ALL_ADMIN')) NOT NULL,
+    recipient_id INTEGER,
+    category VARCHAR(50) NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    message TEXT NOT NULL,
+    severity TEXT CHECK (severity IN ('INFO','WARNING','CRITICAL','DANGER')) DEFAULT 'INFO',
+    reference_type VARCHAR(50),
+    reference_id VARCHAR(100),
+    milestone_tier INTEGER DEFAULT 0,
+    is_read BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ---------------------------------------------------------------------
+-- Table: audit_logs
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.audit_logs (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER,
+    actor_name VARCHAR(150) NOT NULL,
+    actor_role VARCHAR(80) NOT NULL,
+    action VARCHAR(100) NOT NULL,
+    resource_type VARCHAR(50) NOT NULL,
+    resource_id VARCHAR(100),
+    ip_address VARCHAR(45),
+    user_agent VARCHAR(255),
+    details_before JSONB,
+    details_after JSONB,
+    summary VARCHAR(255),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ---------------------------------------------------------------------
+-- Table: manual_bank_payments
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.manual_bank_payments (
+    id SERIAL PRIMARY KEY,
+    member_id INTEGER NOT NULL,
+    amount NUMERIC(15,2) NOT NULL,
+    payment_date DATE NOT NULL,
+    bank_name VARCHAR(100) DEFAULT 'Polaris Bank Limited',
+    payment_reference VARCHAR(100) NOT NULL,
+    narration VARCHAR(255),
+    receipt_file_path VARCHAR(255),
+    receipt_mime_type VARCHAR(80),
+    status VARCHAR(32) NOT NULL DEFAULT 'PENDING_RECONCILIATION',
+    verified_by_officer_id INTEGER,
+    verified_at TIMESTAMPTZ,
+    rejection_reason VARCHAR(255),
+    distribution_json JSONB,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ---------------------------------------------------------------------
+-- Table: paystack_webhook_logs
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.paystack_webhook_logs (
+    id SERIAL PRIMARY KEY,
+    event_type VARCHAR(100) NOT NULL,
+    reference VARCHAR(100) NOT NULL UNIQUE,
+    member_id INTEGER,
+    amount NUMERIC(15,2) NOT NULL,
+    channel VARCHAR(50) DEFAULT 'dedicated_nuban',
+    payload JSONB NOT NULL,
+    status TEXT CHECK (status IN ('PROCESSED','IGNORED','FAILED')) DEFAULT 'PROCESSED',
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+ALTER TABLE public.system_config ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permissive full access for system_config" ON public.system_config;
+CREATE POLICY "Permissive full access for system_config" ON public.system_config FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE public.roles ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permissive full access for roles" ON public.roles;
+CREATE POLICY "Permissive full access for roles" ON public.roles FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE public.permissions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permissive full access for permissions" ON public.permissions;
+CREATE POLICY "Permissive full access for permissions" ON public.permissions FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE public.role_permissions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permissive full access for role_permissions" ON public.role_permissions;
+CREATE POLICY "Permissive full access for role_permissions" ON public.role_permissions FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE public.admin_users ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permissive full access for admin_users" ON public.admin_users;
+CREATE POLICY "Permissive full access for admin_users" ON public.admin_users FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE public.members ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permissive full access for members" ON public.members;
+CREATE POLICY "Permissive full access for members" ON public.members FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE public.next_of_kin ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permissive full access for next_of_kin" ON public.next_of_kin;
+CREATE POLICY "Permissive full access for next_of_kin" ON public.next_of_kin FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE public.member_roles ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permissive full access for member_roles" ON public.member_roles;
+CREATE POLICY "Permissive full access for member_roles" ON public.member_roles FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE public.officers ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permissive full access for officers" ON public.officers;
+CREATE POLICY "Permissive full access for officers" ON public.officers FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE public.chart_of_accounts ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permissive full access for chart_of_accounts" ON public.chart_of_accounts;
+CREATE POLICY "Permissive full access for chart_of_accounts" ON public.chart_of_accounts FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE public.journal_entries ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permissive full access for journal_entries" ON public.journal_entries;
+CREATE POLICY "Permissive full access for journal_entries" ON public.journal_entries FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE public.journal_entry_lines ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permissive full access for journal_entry_lines" ON public.journal_entry_lines;
+CREATE POLICY "Permissive full access for journal_entry_lines" ON public.journal_entry_lines FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE public.savings_accounts ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permissive full access for savings_accounts" ON public.savings_accounts;
+CREATE POLICY "Permissive full access for savings_accounts" ON public.savings_accounts FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE public.share_accounts ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permissive full access for share_accounts" ON public.share_accounts;
+CREATE POLICY "Permissive full access for share_accounts" ON public.share_accounts FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE public.welfare_accounts ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permissive full access for welfare_accounts" ON public.welfare_accounts;
+CREATE POLICY "Permissive full access for welfare_accounts" ON public.welfare_accounts FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE public.target_savings_accounts ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permissive full access for target_savings_accounts" ON public.target_savings_accounts;
+CREATE POLICY "Permissive full access for target_savings_accounts" ON public.target_savings_accounts FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE public.target_savings_transactions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permissive full access for target_savings_transactions" ON public.target_savings_transactions;
+CREATE POLICY "Permissive full access for target_savings_transactions" ON public.target_savings_transactions FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permissive full access for transactions" ON public.transactions;
+CREATE POLICY "Permissive full access for transactions" ON public.transactions FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE public.payment_advices ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permissive full access for payment_advices" ON public.payment_advices;
+CREATE POLICY "Permissive full access for payment_advices" ON public.payment_advices FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE public.payment_advice_distributions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permissive full access for payment_advice_distributions" ON public.payment_advice_distributions;
+CREATE POLICY "Permissive full access for payment_advice_distributions" ON public.payment_advice_distributions FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE public.disciplinary_fines ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permissive full access for disciplinary_fines" ON public.disciplinary_fines;
+CREATE POLICY "Permissive full access for disciplinary_fines" ON public.disciplinary_fines FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE public.loan_products ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permissive full access for loan_products" ON public.loan_products;
+CREATE POLICY "Permissive full access for loan_products" ON public.loan_products FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE public.loans ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permissive full access for loans" ON public.loans;
+CREATE POLICY "Permissive full access for loans" ON public.loans FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE public.loan_approval_steps ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permissive full access for loan_approval_steps" ON public.loan_approval_steps;
+CREATE POLICY "Permissive full access for loan_approval_steps" ON public.loan_approval_steps FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE public.loan_guarantors ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permissive full access for loan_guarantors" ON public.loan_guarantors;
+CREATE POLICY "Permissive full access for loan_guarantors" ON public.loan_guarantors FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE public.loan_repayments ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permissive full access for loan_repayments" ON public.loan_repayments;
+CREATE POLICY "Permissive full access for loan_repayments" ON public.loan_repayments FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE public.loan_appeals ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permissive full access for loan_appeals" ON public.loan_appeals;
+CREATE POLICY "Permissive full access for loan_appeals" ON public.loan_appeals FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE public.welfare_claims ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permissive full access for welfare_claims" ON public.welfare_claims;
+CREATE POLICY "Permissive full access for welfare_claims" ON public.welfare_claims FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE public.marketplace_merchants ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permissive full access for marketplace_merchants" ON public.marketplace_merchants;
+CREATE POLICY "Permissive full access for marketplace_merchants" ON public.marketplace_merchants FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE public.marketplace_products ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permissive full access for marketplace_products" ON public.marketplace_products;
+CREATE POLICY "Permissive full access for marketplace_products" ON public.marketplace_products FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE public.general_meetings ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permissive full access for general_meetings" ON public.general_meetings;
+CREATE POLICY "Permissive full access for general_meetings" ON public.general_meetings FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE public.meeting_attendance ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permissive full access for meeting_attendance" ON public.meeting_attendance;
+CREATE POLICY "Permissive full access for meeting_attendance" ON public.meeting_attendance FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE public.member_exits ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permissive full access for member_exits" ON public.member_exits;
+CREATE POLICY "Permissive full access for member_exits" ON public.member_exits FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE public.dividend_periods ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permissive full access for dividend_periods" ON public.dividend_periods;
+CREATE POLICY "Permissive full access for dividend_periods" ON public.dividend_periods FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE public.dividend_allocations ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permissive full access for dividend_allocations" ON public.dividend_allocations;
+CREATE POLICY "Permissive full access for dividend_allocations" ON public.dividend_allocations FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE public.system_notifications ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permissive full access for system_notifications" ON public.system_notifications;
+CREATE POLICY "Permissive full access for system_notifications" ON public.system_notifications FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permissive full access for audit_logs" ON public.audit_logs;
+CREATE POLICY "Permissive full access for audit_logs" ON public.audit_logs FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE public.manual_bank_payments ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permissive full access for manual_bank_payments" ON public.manual_bank_payments;
+CREATE POLICY "Permissive full access for manual_bank_payments" ON public.manual_bank_payments FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE public.paystack_webhook_logs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permissive full access for paystack_webhook_logs" ON public.paystack_webhook_logs;
+CREATE POLICY "Permissive full access for paystack_webhook_logs" ON public.paystack_webhook_logs FOR ALL USING (true) WITH CHECK (true);
+
+
+-- =====================================================================
+-- SECTION 2: PRODUCTION DATA SEED
+-- =====================================================================
+
+-- =====================================================================
+-- WEALTHBRIDGE MULTIPURPOSE COOPERATIVE SOCIETY LIMITED (WMC)
+-- LIVE PRODUCTION DATA SEED FOR SUPABASE POSTGRESQL
+-- Exported from Local MySQL Production State
+-- =====================================================================
+
+-- ---------------------------------------------------------------------
+-- Table: system_config (18 records)
+-- ---------------------------------------------------------------------
+INSERT INTO public.system_config (id, config_key, config_value, description, updated_at) VALUES
+(1, 'SOCIETY_NAME', 'Wealthbridge Multipurpose Cooperative Society Limited', 'Official legal name', '2026-10-13T21:24:17'),
+(2, 'OFFICIAL_EMAIL', 'wealthbridge.coopsociety@gmail.com', 'Official Secretariat Email invariant', '2026-10-16T11:20:11'),
+(3, 'OFFICIAL_PHONE', '+234 800 000 0000', 'Secretariat Helpdesk Contact', '2026-10-13T21:24:17'),
+(4, 'REGISTERED_ADDRESS', '13, Agbaje Iloro Street, Odogunyan, Ikorodu, Lagos State, Nigeria', 'Statutory physical secretariat', '2026-10-13T21:24:17'),
+(5, 'BANK_NAME', 'Polaris Bank Limited', 'Corporate operational banking partner', '2026-10-13T21:24:17'),
+(6, 'SHARE_UNIT_PRICE', '1000', 'Nominal price per ordinary share unit in NGN', '2026-10-13T21:24:17'),
+(7, 'MIN_SHARE_UNITS', '5', 'Mandatory minimum share units (NGN 5,000) for benefit qualification', '2026-10-13T21:24:17'),
+(8, 'MAX_SHARE_UNITS', '200', 'Statutory 20% anti-monopoly ceiling (NGN 200,000) for Year 1', '2026-10-13T21:24:17'),
+(9, 'TARGET_SHARE_CAPITAL', '1000000', 'First-year target share capital in NGN', '2026-10-13T21:24:17'),
+(10, 'MONTHLY_DUE_DAY', '28', 'Monthly contribution deadline day of each month', '2026-10-16T11:20:11'),
+(11, 'WELFARE_MONTHLY_LEVY', '1000', 'Fixed monthly welfare levy per member in NGN', '2026-10-13T21:24:17'),
+(12, 'REGISTRATION_FEE', '5000', 'One-time onboarding registration fee in NGN', '2026-10-13T21:24:17'),
+(13, 'PASSBOOK_FEE', '2000', 'Passbook and digital ID issuance fee in NGN', '2026-10-13T21:24:17'),
+(14, 'FINANCIAL_YEAR_CYCLE', 'OCT_TO_SEP', 'Statutory Financial Year cycle (OCT_TO_SEP or JAN_TO_DEC)', '2026-10-18T06:46:21'),
+(15, 'FINANCIAL_YEAR_START_MONTH', '10', 'Starting month of cooperative financial year (1-12)', '2026-10-18T06:46:21'),
+(16, 'DEFAULT_DIVIDEND_STATUTORY_RESERVE_PCT', '50.00', 'Mandatory Statutory Reserve percentage from surplus (Min 50% per Lagos State Cap C15 & Article 24)', '2026-10-18T06:46:21'),
+(17, 'DEFAULT_DIVIDEND_SHARE_WEIGHT_PCT', '60.00', 'Dividend weighting on Paid-Up Share Equity (default 60%)', '2026-10-18T06:46:21'),
+(18, 'DEFAULT_DIVIDEND_SAVINGS_WEIGHT_PCT', '40.00', 'Dividend weighting on Regular Savings Patronage (default 40%)', '2026-10-18T06:46:21')
+ON CONFLICT DO NOTHING;
+
+SELECT setval(pg_get_serial_sequence('public.system_config', 'id'), COALESCE((SELECT MAX(id) FROM public.system_config), 1), true);
+
+-- ---------------------------------------------------------------------
+-- Table: roles (10 records)
+-- ---------------------------------------------------------------------
+INSERT INTO public.roles (id, role_code, role_name, description, is_system_role, created_at) VALUES
+(1, 'MEMBER', 'General Cooperator', 'Standard active cooperator', TRUE, '2026-10-17T10:24:08'),
+(2, 'PRESIDENT', 'Cooperative President & Chairman', 'Chief executive officer with universal override', TRUE, '2026-10-17T10:24:08'),
+(3, 'GENERAL_SECRETARY', 'General Secretary', 'Custodian of cooperator register and meetings', TRUE, '2026-10-17T10:24:08'),
+(4, 'FINANCIAL_SECRETARY', 'Financial Secretary', 'Primary record-keeper of finances and advice', TRUE, '2026-10-17T10:24:08'),
+(5, 'TREASURER', 'Treasurer', 'Chief financial custodian of society funds and disbursements', TRUE, '2026-10-17T10:24:08'),
+(6, 'LEGAL_COMPLIANCE_LEAD', 'Legal & Compliance Lead', 'Statutory compliance and dispute arbitration', TRUE, '2026-10-17T10:24:08'),
+(7, 'TECHNOLOGY_SYSTEMS_LEAD', 'Technology Systems Lead', 'Platform systems administration and infrastructure', TRUE, '2026-10-17T10:24:08'),
+(8, 'SUPER_ADMIN', 'Developer Super Administrator', 'Universal administrative and forensic clearance', TRUE, '2026-10-17T10:24:08'),
+(9, 'CREDIT_COMMITTEE_MEMBER', 'Credit & Risk Committee Member', 'Vetting of loans at Stage 1', FALSE, '2026-10-17T10:24:08'),
+(10, 'INTERNAL_AUDITOR', 'Internal Auditor', 'Read-only inspection of forensic audit and ledgers', FALSE, '2026-10-17T10:24:08')
+ON CONFLICT DO NOTHING;
+
+SELECT setval(pg_get_serial_sequence('public.roles', 'id'), COALESCE((SELECT MAX(id) FROM public.roles), 1), true);
+
+-- ---------------------------------------------------------------------
+-- Table: permissions (35 records)
+-- ---------------------------------------------------------------------
+INSERT INTO public.permissions (id, perm_key, perm_name, module, description) VALUES
+(1, 'view_own_profile', 'View Own Profile', 'MEMBER', 'Inspect personal biodata and status'),
+(2, 'view_own_accounts', 'View Personal Accounts', 'MEMBER', 'View Savings, Shares, and Welfare balances'),
+(3, 'submit_contribution', 'Submit Contributions', 'MEMBER', 'Fund accounts and settle monthly dues'),
+(4, 'apply_loan', 'Apply for Financing', 'MEMBER', 'Submit 2x interest-free loan applications'),
+(5, 'submit_welfare_claim', 'Submit Welfare Claim', 'MEMBER', 'Lodge mutual solidarity grant claims'),
+(6, 'view_marketplace', 'Browse CO-CARE Market', 'MEMBER', 'Inspect cooperative vetted marketplace'),
+(7, 'view_bylaws', 'View Bye-Laws & Rules', 'MEMBER', 'Inspect statutory charter and policies'),
+(8, 'view_executive_console', 'Access Executive Desks', 'EXECUTIVE', 'Clearance to enter Executive Console'),
+(9, 'manage_members', 'Manage Cooperators', 'SECRETARIAT', 'Edit cooperator biodata and records'),
+(10, 'approve_kyc', 'Approve Cooperator KYC', 'SECRETARIAT', 'Review and verify new member applications'),
+(11, 'reject_kyc', 'Reject Incomplete KYC', 'SECRETARIAT', 'Decline invalid applicant records'),
+(12, 'view_all_members', 'View Complete Register', 'SECRETARIAT', 'View the statutory register of members'),
+(13, 'manage_meetings', 'Manage General Meetings', 'SECRETARIAT', 'Record meeting resolutions and attendance'),
+(14, 'issue_passbook', 'Issue Passbook Statements', 'SECRETARIAT', 'Generate official cooperator passbooks'),
+(15, 'verify_guarantors', 'Verify Guarantor Liens', 'SECRETARIAT', 'Review and enforce loan guarantor obligations'),
+(16, 'arbitrate_disputes', 'Arbitrate Member Disputes', 'SECRETARIAT', 'Handle member grievances under Bye-Laws'),
+(17, 'verify_contributions', 'Verify Bank Remittances', 'TREASURY', 'Confirm inward bank payments & receipts'),
+(18, 'issue_fines', 'Assess Disciplinary Fines', 'TREASURY', 'Levy statutory compliance penalties'),
+(19, 'view_ledger_audit', 'Audit Double-Entry Ledger', 'TREASURY', 'Inspect real-time double entry transactions'),
+(20, 'manage_inward_remittances', 'Manage Bank Reconciliation', 'TREASURY', 'Reconcile Polaris Bank remittances'),
+(21, 'view_financial_statements', 'View Financial Statements', 'TREASURY', 'View society aggregates and balance sheets'),
+(22, 'authorize_disbursements', 'Authorize Disbursements', 'TREASURY', 'Authorize cash releases from treasury'),
+(23, 'manage_bank_reconciliation', 'Direct Polaris Reconciliation', 'TREASURY', 'Match bank feeds with cooperator records'),
+(24, 'view_liquidity_ratio', 'Inspect Society Liquidity', 'TREASURY', 'Monitor statutory liquidity ratios'),
+(25, 'modify_payment_advice', 'Modify Payment Advice', 'TREASURY', 'Revise monthly cooperator billing advice'),
+(26, 'credit_committee_approval', 'Credit Committee Review', 'CREDIT', 'Vet loan applications (Stage 1 / 33%)'),
+(27, 'financial_sec_loan_approval', 'Financial Sec Loan Vetting', 'CREDIT', 'Financial assessment of loans (Stage 2 / 66%)'),
+(28, 'treasurer_loan_disbursement', 'Treasurer Loan Disbursement', 'CREDIT', 'Final loan release & disbursement (Stage 3 / 100%)'),
+(29, 'presidential_loan_override', 'Presidential Loan Override', 'CREDIT', 'Direct 100% executive loan approval'),
+(30, 'executive_oversight', 'Presidential Supreme Oversight', 'PRESIDENT', 'Omniscient visibility across all desks'),
+(31, 'governance_signoff', 'Presidential Governance Sign-off', 'PRESIDENT', 'Executive sign-off on contact/policy changes'),
+(32, 'configure_system', 'Configure System Constants', 'ADMIN', 'Modify statutory constants and charges'),
+(33, 'manage_officers', 'Manage Officers & Portfolios', 'ADMIN', 'Assign portfolios and executive roles'),
+(34, 'database_maintenance', 'Database Maintenance', 'ADMIN', 'Execute schema and seed operations'),
+(35, 'system_audit', 'Access Forensic Audit Trail', 'AUDIT', 'Inspect tamper-evident system logs')
+ON CONFLICT DO NOTHING;
+
+SELECT setval(pg_get_serial_sequence('public.permissions', 'id'), COALESCE((SELECT MAX(id) FROM public.permissions), 1), true);
+
+-- ---------------------------------------------------------------------
+-- Table: role_permissions (119 records)
+-- ---------------------------------------------------------------------
+INSERT INTO public.role_permissions (role_id, permission_id) VALUES
+(1, 1),
+(2, 1),
+(3, 1),
+(4, 1),
+(5, 1),
+(8, 1),
+(9, 1),
+(10, 1),
+(1, 2),
+(2, 2),
+(3, 2),
+(4, 2),
+(5, 2),
+(8, 2),
+(9, 2),
+(10, 2),
+(1, 3),
+(2, 3),
+(3, 3),
+(4, 3),
+(5, 3),
+(8, 3),
+(1, 4),
+(2, 4),
+(3, 4),
+(4, 4),
+(5, 4),
+(8, 4),
+(1, 5),
+(2, 5),
+(3, 5),
+(4, 5),
+(5, 5),
+(8, 5),
+(1, 6),
+(2, 6),
+(3, 6),
+(4, 6),
+(5, 6),
+(8, 6),
+(1, 7),
+(2, 7),
+(3, 7),
+(4, 7),
+(5, 7),
+(8, 7),
+(2, 8),
+(3, 8),
+(4, 8),
+(5, 8)
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.role_permissions (role_id, permission_id) VALUES
+(8, 8),
+(9, 8),
+(10, 8),
+(2, 9),
+(3, 9),
+(8, 9),
+(3, 10),
+(8, 10),
+(3, 11),
+(8, 11),
+(2, 12),
+(3, 12),
+(8, 12),
+(9, 12),
+(2, 13),
+(3, 13),
+(8, 13),
+(3, 14),
+(8, 14),
+(8, 15),
+(8, 16),
+(2, 17),
+(4, 17),
+(5, 17),
+(8, 17),
+(4, 18),
+(8, 18),
+(4, 19),
+(8, 19),
+(10, 19),
+(4, 20),
+(8, 20),
+(2, 21),
+(4, 21),
+(5, 21),
+(8, 21),
+(10, 21),
+(5, 22),
+(8, 22),
+(5, 23),
+(8, 23),
+(5, 24),
+(8, 24),
+(2, 25),
+(4, 25),
+(5, 25),
+(8, 25),
+(2, 26),
+(3, 26),
+(8, 26)
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.role_permissions (role_id, permission_id) VALUES
+(9, 26),
+(2, 27),
+(4, 27),
+(8, 27),
+(2, 28),
+(5, 28),
+(8, 28),
+(2, 29),
+(8, 29),
+(2, 30),
+(8, 30),
+(2, 31),
+(8, 31),
+(8, 32),
+(8, 33),
+(8, 34),
+(2, 35),
+(8, 35),
+(10, 35)
+ON CONFLICT DO NOTHING;
+
+-- ---------------------------------------------------------------------
+-- Table: admin_users (1 records)
+-- ---------------------------------------------------------------------
+INSERT INTO public.admin_users (id, username, email, password_hash, full_name, role, is_active, created_at, last_login) VALUES
+(1, 'admin', 'admin@wealthbridge.ng', '1b0f55421f6f3591c134e42bc340156ffe414fe81fcd4f7aa577460ddacc2936', 'Developer Administrator', 'SUPER_ADMIN', TRUE, '2026-10-14T17:02:23', '2026-10-18T08:56:49')
+ON CONFLICT DO NOTHING;
+
+SELECT setval(pg_get_serial_sequence('public.admin_users', 'id'), COALESCE((SELECT MAX(id) FROM public.admin_users), 1), true);
+
+-- ---------------------------------------------------------------------
+-- Table: members (12 records)
+-- ---------------------------------------------------------------------
+INSERT INTO public.members (id, member_code, first_name, last_name, other_names, email, password_hash, phone, gender, marital_status, date_of_birth, residential_address, identification_type, identification_number, passport_photo, employment_status, employer_or_business_name, bank_name, bank_account_number, bank_account_name, bvn, monthly_income_verified, contribution_tier, dividend_payout_preference, kyc_completion_percent, pending_email, pending_phone, pending_address, contact_change_status, contact_change_requested_at, contact_change_reviewed_by, contact_change_reviewed_at, status, admission_date, exit_date, last_login, created_at, updated_at, paystack_customer_code, paystack_dva_account_number, paystack_dva_bank_name, paystack_dva_account_name, paystack_auth_code) VALUES
+(1, 'WMC-2026-001', 'Qazeem', 'Adebowale', 'Omotola', 'medicadex@gmail.com', 'd1ecd2e22b4705bc4c96cbf07188e90b06585956c47e253923b9e194cad0a630', '08109383593', 'MALE', 'MARRIED', '1992-10-21', '13, Agbaje Iloro Street, Odogunyan, Ikorodu, Lagos State', 'NIN', 'NIN-WMC-FOUNDER-001', 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/4QDMRXhpZgAATU0AKgAAAAgABQEAAAMAAAABA8oAAAEBAAMAAAABBWoAAAESAAMAAAABAAEAAAExAAIAAAAmAAAASodpAAQAAAABAAAAcAAAAABBbmRyb2lkIFVQMUEuMjMxMDA1LjAwNy5BMTM1RlhYU0FFWUExAAAEkAMAAgAAABQAAACmkBEAAgAAAAcAAAC6kggABAAAAAEAAAAAkpEAAgAAAAQ5MTcAAAAAADIwMjU6MDM6MDMgMTc6MDQ6NTMAKzAxOjAwAAAAAP/iAdhJQ0NfUFJPRklMRQABAQAAAcgAAAAABDAAAG1udHJSR0IgWFlaIAfgAAEAAQAAAAAAAGFjc3AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAD21gABAAAAANMtAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACWRlc2MAAADwAAAAJHJYWVoAAAEUAAAAFGdYWVoAAAEoAAAAFGJYWVoAAAE8AAAAFHd0cHQAAAFQAAAAFHJUUkMAAAFkAAAAKGdUUkMAAAFkAAAAKGJUUkMAAAFkAAAAKGNwcnQAAAGMAAAAPG1sdWMAAAAAAAAAAQAAAAxlblVTAAAACAAAABwAcwBSAEcAQlhZWiAAAAAAAABvogAAOPUAAAOQWFlaIAAAAAAAAGKZAAC3hQAAGNpYWVogAAAAAAAAJKAAAA+EAAC2z1hZWiAAAAAAAAD21gABAAAAANMtcGFyYQAAAAAABAAAAAJmZgAA8qcAAA1ZAAAT0AAAClsAAAAAAAAAAG1sdWMAAAAAAAAAAQAAAAxlblVTAAAAIAAAABwARwBvAG8AZwBsAGUAIABJAG4AYwAuACAAMgAwADEANv/bAEMAAgEBAgEBAgICAgICAgIDBQMDAwMDBgQEAwUHBgcHBwYHBwgJCwkICAoIBwcKDQoKCwwMDAwHCQ4PDQwOCwwMDP/bAEMBAgICAwMDBgMDBgwIBwgMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDP/AABEIARYAwgMBIgACEQEDEQH/xAAfAAABBQEBAQEBAQAAAAAAAAAAAQIDBAUGBwgJCgv/xAC1EAACAQMDAgQDBQUEBAAAAX0BAgMABBEFEiExQQYTUWEHInEUMoGRoQgjQrHBFVLR8CQzYnKCCQoWFxgZGiUmJygpKjQ1Njc4OTpDREVGR0hJSlNUVVZXWFlaY2RlZmdoaWpzdHV2d3h5eoOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4eLj5OXm5+jp6vHy8/T19vf4+fr/xAAfAQADAQEBAQEBAQEBAAAAAAAAAQIDBAUGBwgJCgv/xAC1EQACAQIEBAMEBwUEBAABAncAAQIDEQQFITEGEkFRB2FxEyIygQgUQpGhscEJIzNS8BVictEKFiQ04SXxFxgZGiYnKCkqNTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqCg4SFhoeIiYqSk5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2dri4+Tl5ufo6ery8/T19vf4+fr/2gAMAwEAAhEDEQA/AP38ooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKK8v8A2g/2w/AP7M1lu8Tawo1Bl3RabaL515N9EBwo93Kg4PNAHqFFfmz8Vv8AgtV4u1u4aHwf4Z0nQbXJAm1BmvLhxnggDYi8diGHv3rzdf8Agql8bppjjxZZqN2R/wASe0wfb/V8VXIyeY/W6ivyf0j/AIKl/GuOYM3iTT7scfJLpNsoPOf4UB/+t3zXrHw//wCCw/i3S7po/FXhPRdWhyMNp0klnIg7k7/MVj7AL256kHIw5j9CKK8d+BH7dnw7+P8AdpZabqkmlaxI22PTtVRbeebp/qzuKOefuqxbg5Ar2KpKCiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKp+IPEVj4T0a41HU7y3sLG0QyTXE8gjjjUdyTxWd8SPiTovwk8G3mveIL6LT9NsV3PI55Y9kUdWYngKOSa/J79uH9vnWP2h/Eskayy2PhuzlLWGmLJgADOJZsEBpDg9ThQcDjcS7dQ8j3b9sH/gqTf+IJLrQ/h/dNoukqWjl1b7t5dgAgmPj9zGezf6zgEFeRXwz4o8brrGozXVxO15dzOZJZpmLyyseSWY8sT6muI1rxXdXsrtJMzFjuOABn8O1ZR1BpG+9+Zo9skrRNqeHb1Z1F5r2WOxvl9v8A9dVW1tj/ABN19ax1k3H+LoKu6batdTKoDde1Ze0NlhbI3dOnZtrbj1zXRaZrE1my/N8uRkEdRUfhvw2Ht48RSszY+n+Hb+dbn/CHXDLkQuo9WUjPrj8a0Uupz+yLWleI7d5P30atu64HBHFfVP7MP/BQTxV8K7qHTdWuZ/Ffh75QLe6l3XlsoznyZieeoO2TK/IFUpkkfIE+jTWj/MuD257U7T9em06dTu3qvGCe3+RVcyW5PsWtj9uPhd8VdD+MfhOHWdBvFurWQ7JEI2zWsgAJjlQ8o4yOD2IIyCCeir8kf2bf2pde+DnidNS0i6YNJsS5t5fmiuowThZBnBAycEEFecEZIr9LP2dv2kdB/aN8JtfaYxtdRtAq3+nStmWzc9DnA3xnB2uBzgghWDKBrsTtoz0KiiipAKKKKACiiigAooooAKKKKACiiigAps06W0LSSMsccalmZjhVA6kn0p1fMf8AwVU+P7fB/wDZ0k0Wxuvs+seMnawQrnelqADcMPqCkf8A2146ZDSu7AfFf/BQX9tCb9ov4mzx2Nyy+DdBlaHTYslVuCMq1yw7lyOM9FIHDbjXyFr+vtfzNIWb5h90nir/AI28RG4j2xuVXPWuLvL/AA5x6+lKtLSxthaPNK5a8/fJy3vUlu7NIoVc5IX9azYboue/StnSfLjMLM244DcHoeo/XivPqTaPepYdF2CFkQ4UZ69K6LwtpmbUtIGG/B4H3cEg/j0/yKy7TE8qqo3bhwfSuw0S2WK72gblPDAtwRwT9e3+emPO7nYqEdj0bw3pcJijEcKLGoVdmBuznk556jBB+v4biaYqvlVIHTnqBj26jHrXN+G9X+ylVXCuq5ZyOoGcfkOOP5108FwmxV8xWBIC4J+b0x9cdjng+9d9OV0ePWo8kjE8TaYse1m3MGG3l+O3Tj+tcPqFmtkzBmAKk/eON2O+P89a7rxXHH9o3NH14TC8cn5sHr+f+Ncb4jm5bLfJghjjkNn1qzlW9ilpuq/YLpW3bcHrnOK9o/Z++P8Aqnwd8baf4i0qZlurU7HiZysd3E20vDJ1/duADkglWUMOVXHgU0xD5U9+1a2ga61ttUkjkEEf5+lVTlZ2Mq1NNXR+4vwu+JOl/F7wBpfiTR5GksNUh8xA4AkiYEq8bgEgOjBlYAnBU8mt+vg3/gk3+0L5PiO+8DXcyi11hGvbBWb7l3Go8xF4yfMhG7rtH2Zu7GvvKqOYKKKKACiiigAooooAKKKKACiiigAr8k/+Cwnxobx5+0/eaTDOsmn+FLaPT12N8nmcPKf94SOUOP8AnmB2OP1sr8D/ANqnxZ/wnnxX8Ua38wTWtVub1R3USTM4/wDQq0p73Dd2PJda1U3R/XArDlkYn5f0rQki3y/jinW9h9o4yT645rmqS6s9TDpJ2RQtl+bv7Y6V0PhvTzc4Y++0dR/nmnaZoO5PMC5ZuASM5Nd94K8AzyR+asJ2hOGY4BGcevr615Vaor2Po8Lh243ZR8PeHLhk+0xjd5P3gDggfX06DPQHA6kCuqtrObTbJXaKTcuOAu3JODg8dfm5611XhWy+xtdQi3/0SSNVm2JjzMZHzev8RIzjPoeRpW09lrGmO3lzRyLcMBujAVw23JDZzkdMYHWqpu6CrFwmcrbP9muZJZplXy0XP8YbcT3A4xxkHH3x+G54c8UbZWWRVVoVB8wgkRfNwxxzjkgDkEn3rLv9BuLa0juPM8syH5ZMjqDywAGQARxjk4o0TwLq2pyny7iT9+3m+YxKqSD69epHIz1HTBq/auNrGTwqqJuR2FlpM3jN0+zvtVm2qHYZYFQ3fG7ByOPSub+Jfgm60dZIwVEyjaSB1x1Xn0xg49CBk11EF1eeAF8uMysqhVO9WVCeoOxuRkAHGSDuzkjpjaz4hfXHjWSKCLYgjCRAqAOcDHOPwwPQVu8Skjh/s2XNdbHmCwPx948etSW26F//AK/NdB4hso7dty/LnoPSufn1G3juvKEimT0HNFOq5anPWw6hoz0L9n74l3Hwx+J2ja5b/NJpd9DdKobbvKuDt+jgbDx0Y1+2Gg63beJdDs9SspBNZ6hAlzBIOkkbqGU/iCDX4S+C8XWqKu4gZFfsH+wX4sk8WfsseGGmkMs+mxyae5P8IidljX8I9g/Cu6Osbnj1bKVkew0UUUGYUUUUAFFFFABRRRQAUUUUAFfz4/FtfImYHdGEByT9f/r1/QdX4N/t3+EIfCvxP8WaXDFJHHZ67d2iIF/gSdwoOR/dGQPQ1tS6h9pHztrXilPs0i274mYYVvSuU0n4iXOkzmMTSXEfV1ztIH+fUgc1vy+D5LotuHlq3Y89euRW/ZWfh2wtFjW1bzRgK77S7nHOTgD8PSvLrYqCurXPpMHltRpSvy+bM3QfHt9fQfckgRQCGZ/ugnrgDJH6c1678KviyttpzWU0nyyoZFY8eWV/HknJ9+BXly6Imo3Cw2qWavjKrJMsI/76Yhf19fanX2l6joDQi7t54VnX905O6OZQSMo4yrAHI+UnmvNrSUldI+gwtCUdHK59bfCrxppf2XTLW+1KxS41N49iRvjPO0YOMKeh5xgnA5HHqk/wj0ebTrqa3kaO+mkjJuHYlUT5iyhQwHUoct02HnnFfCnhrxYbK4VgWUqPmGRtYdDkd+K+h/gl8ZLjVFitftKzSRjKx7ysm0HgEDG772cg9uRjOOeniteVnZWy98vPc9gh+Glnb36i4mjmaOMRYaLzlfOBgc53jjG4ZGOOlO8XHTfBWiSSW8bbbR0V40fJVtpyBuzyOmO2e2DjhfHHia90lYbqOS4TDEA7/M8rJOSoJHJ4HPHpXhvjf4p3N2Z2jkaNmdiGEhaQZ9WJPPrxkkn2xtXrKKuc2HwrqPfQ7T4u/Hm1mSRYbNmu1IKh8FIzzgt0O4BuhHOeT3Hz94r+N+pajqcka30ixxEKvzFmYHucfKTyRnAIwOepqLWdXmvmZRukZzx7Ht+PNZrfD65eRWuI1haQ58spum/Fe341OHruT2HisGox5UyjD461KaF1kvrxpGbIc3DsRkYIHOD6YH/1q0/CV1cWlzHMJmXk/KwO089BgV1nh/8AZ28SXGkG+i04w27DcDclY2Yf7uSfzHfvis7U/C9/4ekb7VDxjLMCCv5j69a9ONZxWx4MsHFytzHoXw58fQ3HiW3jkj8nzcKGznB56/4+tfrj/wAEudQNz8A9Xg+bbZ69LGoPUA21s38ya/Gn4dqbnX7fcQdx24POevNfrn/wSUmmk+Hni8Sfd/tG3I+v2ZQee/AWu2hU5oHhY+h7KpY+tqKKK0OIKKKKACiiigAooooAKKKKACvyM/4LEeDH8NftReILqaJIrfVoLXULbAGGQwLEzfjLDL7k8/X9c6/Mj/gun428LeIda8PQaRqmm6hr2kpPZazHazrNJY7SjxRShSdj5eQ7WwcEccilLY0pfxI+p+Zusa+XfZGzIN3LAdPYVZ+HOmDWfE9tbrprao0hx5LSlGftxgEnr0Hf1rjfF/iy50fUZIbXS7q4Zl2ibbiOPrjnufx4rpvG/wCztqDfsz6X480jxNqHiRpJx/bVppkYg/sZMY2uoZnbBAy7bRyDtAyT5Ps0muZ2ufXPGTndQXwo+hr/AMG6DY6atlrw8I6LeSxrMtvFLDDNEpz1Vyc9OoAzwetcbDoNnpk8kcklrqXh+RtrNA3mKqnncADkOBg5UgYHIxzXgPws17w3rXiXwjb2/he10XUvD9nDZ3eoC5Fza6nci/kka+ukkRvLAt5Eh8tGx+4BBO/Yv2r+1B8Yvhnr2q3Eng74a29n9otV+y66iPoLPJvBeaOGLDzI3zgGUBCSeCUUU8RGMGorUMvxFSctdj5s+J/h5Phv4sjtbe6ivLO+jW5tJo3DLLC2cEY49R+HvWp4V8WzeHdTjktZGjmB2qynkAgg/jg9a4/WdL8/VZLuRLfzrgliIY1jjJ7kKoCjPU4ABPOK674f+GlS+juLr5unyFev4elePiOVLmPpMPWnJ8kj6KvPGcep/DG1upF8syNghmy/fGeBn1yAOnSvI/FGmQy6ddTRqvmbSVCj8vzr1TTGsLnwLJZtGvySCRGLDn04A/rXnPiDw+2n3ryQlnhkOWHUKa55V+blK9k6TdjnPCHhZrTR/tjKs2o3wbyFjZXktlBK5K/wljkAnqB9aw73xJY+GNQj+361bwtHIDJJ9oQbcnB+bkD0z2rs9H8OzDxJp95NZ2us6bY3CXE+kX8TSWeoKGBZJArjh1+Uk8gcqVPNbHx61a4+MXwDsvDOnfDXS4dS8Nait9K2kyxPa3cRBQpMriOeAgMNu7KsFypAxXs4WMWlY8XE4id3zHVaf8TdHu/DN5NF8U7O7hSPyLe3sbnS5o3kAwEcCEOAOBnOeBzkjPlEnibUJb4Lc2dvfRu3zvaH5zn1jPX/AICTn0rwbx54U8cfEbxX4Z0PxR4fh0STw7p1voNpcXOl/wBkpDZo8kkbyy7QJXAlfEp3M6hPvYBPZ/EL4f2/w78WWsfwy13WNQtYUUTXGqKUh8wdRGThiucfeTr0JGDXfUppSUbni051JKU7aHpugiK28UW81rJHcWV0QY3X+AkkZH0PryCD+H7Af8EotPW2+AmuT7V82415izgcsBaWuAfpk9fU1+MvwwbxDNe/a9dtLGGaR/MY2zHbK+fvkZIDHuR1+tfpz+x9/wAFB/A/7NXwOsdD17TfEVxqN1LJdmTT7WKSOUEhACzSqdwVVyMdMYJrooxUbo83GylNRb3P0BorC+GnxH0n4u+BNN8SaFc/atK1WLzYJCpVuCVZWB6MrKykdiprdrY80KKKKACiiigAooooAKKKKAMvxvol54l8F6xpun6hJpF9qFlNbW19Gu57KV42VJVGRkoxDAZHTrX88+g6DcQfDgyXEjTTavqNzezyO25mLMI8knqW2ZzX9Flfz/3dvHL8O9H8tQqrD90cBRzxUyNaS1+aPFvFmkOZmEce7jsKwLHR9QW6Mlna3O8LtLxgxZB4wW9D+IPvXrA0FJbjc3zex/Guw8GeFbe6tx5qhVwGzwc9if8AP868XEYjk0R9nl+C9p7zOG+Etr4o8M2E9tp9noFi9xhTcR2MVxeRnP8ABKUJj6fwfMehJ5q/rnhW5t7hvtE3nX1wfMkYyeZ6Dcxyeo9z0+levXesWPhewX7LDG00ir1QZU7h1zjpnOBnJwSSBg8ndaHJND9qmkWaaUA4XovoP5CuGpiPduz2KOB10R5nceHRCd0mCFGeas6TqKrqSbeecDmovFesD+0GhiYEr985/L+tdh8G/hnN4guo7qZQY5HwoBzx7j1zXHiKnLT5pHdh6P71QidV4c1hotEeELlGXDKB97v0785rnxroNzIsnIbkent/Wvpz4S/sft8T45rfTbq3t7y3i8zbcuU8088DapO7joRjHJIHNeQfGL4D3nhLULlIIWae1lKzR8nB9s+hzwea86jJtKb2eiZ2YiCcnCOso6teRgeC/wDTrhtp3bP4T0Izz9Ox/Cu0XwFY67JHcLGIb6NCscsY2Sx7hyAVwfwyRz0NeceC7qXRtcWG4jkjEhA+YYx9RXs+m2Eklql0vyLxGPfj/Ir28LUcEeDWw6q3PH/HX7KVzr949xBr18ZGXCNcxrcsAAAAXOGOAABzxjHQDHM2v7OOraBdq1xfxT+WwwViO78cscfh1r6WgdnXqeMYH1rK8QfPGw+93wP516DxFldHH9TurM8us9HaIqJFDAAHgDmtb4n6feX/AMEGl0xvLu7GVQJF+8kT4D4PrkLz2HQg1c1aAxPuCZGM+mTzxVjVp2i+EOtbW+ZYo8Dpy0i/4n866cHW520eLmeH9kotdGfpd/wSN1i11P8A4J/+A4bdhu06O5tZ1zny3FzK+D/wF1P419JV8a/8EQxJa/sta9ayBR5fiWeVcDs9vbkdh2Ar7Kr0o7Hztb42FFFFMzCiiigAooooAKKKKAEfJQ7fvY4r+evwZ4kh8SfCyyaPO63nmt5VdcFGD7tv/fLKfxr+hWvwf/aq/Z3m/ZD/AGv/ABx4He1a10XXJ31zw+3IhmtpGdljQnuifu24GWt2wSMVMtjow8knZ90cHburjd1/Cut8NW73MD/OqiNV+Xvk55H/AOuuCe9/s+8ELFiSwGT3zXTaB4jjt7X7w3t8pG7rj/P418rjr85+kZW4+zudJFpSSXvmSfN2APOf/rf4Vt3ljFa6NPKVjXyomfjopx2z+X41g6V4hV5Iju+8wPPzDjpx04yeDTPHnjKG/K2agiI4Zscc84B/T9K82V2z3qNrFP4e/BGx1sJcTq0z53Ebtq55z/Wvdvhp4RsfD97DD8sMe5QrKMgDP+eK+edJ17QfEd/Foevalqmn6bNmNrm0mEbQ578kDv8AX6Vc0L4Eav8ACC/XUvDvxiuNUs0Q3EWm6lcLNG3+wA2SvUYAI+tcuIoTrXU3bsjajVjQknGN+70v+J+nNn4a8FaH4Hj26i0eoyQDy5PM2kMwyVwOwDHg9dp6AjPzZ8V9Z0yCe4E0luu1iWd3CqvHc+ory3Tf2jda8QeGBNI1tDJDFhhvzhx2GT6+n+FeN/En9mnS/jFqUXiDxN4s1y+Z9sv2GKYmzUgA7AOnUHPTNEcHKs0p+7GPbVv5GMcRCgm4Sc5S110sep67Y6Hr9vNNBc2tzcKN6yRSglce4Ndz4fsVXQLdWZtpTJBPTNfPHgy70GTxjb29jo8uk6XbtscLu+cKMAbm5OSBnjpXvc3jPT4hE1rsMbquSSBsPII+g7e3pXqUKThFpvTzPNrVU5q3zLE6LaoBxzjrn3rA8RXSoGw5yPlBHXmpfEmtb41kjZccYx+HP41wviPxVcRQsvy/fAZiece31/pXRZuJzyqRi7sm1DVxKSvf059ai8WeK4dA8B20MxT/AIm2oQ2m1zgAKDIW6HgbVH1YdKxLG9a/vF7seuD1/wA5qjrXgTxF8fvjT4f8C+GbWS8vmeKARRvsxNNhnZz2RY1Qlj90bz616WWwfxHzeeVlKyj6n6l/8EddEbTv2YdUu2jZItS8QTyQE/xRrBbx/wDoauPwr6xrj/2f/g5Y/s/fBjw74N06RprfQbNYGnK7WuZTlpZSOcF5GdyO27FdhXsxVlY+RlK7uFFFFMkKKKKACiiigAooooAK+N/+Cwn7EHiD9qf4deGfEngfTYtU8beBbtpLezMscL3ltLt8wK7lVLIUVgpYAqZAMsVU/ZFFAJ2P52PFmi7r7zGjkgljyjxONrRMDypHYqePwrMtpZI7lVViM9yenFe5f8FHfg/ffs/fti+MtMnkklsdcvX8QafI+F3QXUjSFRg8BJPMj5xnZn0rw9LVrhI3XjuMV5eJwq5mz6rLswapqJ1Gn3u633bvvVQ1lFvH+bk8EHPQ8/41WiuWjt/m5bIHvRLPuXvt74z615MsNZ3PpqOOulYx7+0Zmx/Ecnnv9aj0GxgvdTRb7V1t13DCghWcexPpgD8a7Xwf8JdQ8fXfzSixs2B+YDMhGOfYf5+leyeF/gh4b0y1hsdL0m1uJ7jCmW4iErMTxliwOOo/GpjSNvaSm9dDgtA+HehabYR6j/aEM7BAziW4QopPTIAA98ds96jv/HdjrVgiWl7H5iDaiLIMNx12/r7/AJ17z4V/Za8IiGG5utA0m/lkAkUPCyx9uqA4Jyffk9yK0df+F+hyTfZbvw/obWaxhUigso4Vxx3UA5GBznPvzXRCjyu6OWpKU/dufM4UtdRyltzdBkVrQaqQPvNz1BrrvG3wPttC1Bm0u4ljt2IKwTHPljngH0HP0rk73RpLYCORdskY4BJAJ5/P/wCvTqcuxyxjVjuadl4ga5t/JkbdtAA57VnX8Hnh84OTn0zUNgjoPmUhupxyKvCMv2z71UKaMq2IfUz/AA7p7Q6uXf7qkYzwOa+9v+CTv7GGveC/GeofFXxJBZ2tvrFns0OEN5lxPBMscguH+UBBsO1QCW+aQHAxn4b0m0bUdatbONWaS+uI7WNV6s7sEUD6k4r9xvCOnSaP4V020lZZJbW1iid1QIGZUAJCjgZPYcCvYwtPlgfK5lWc5o0KKKK6TzAooooAKKKKACiiigAooooAKKKKAPzV/wCDg34TTC2+H/j63td0MDT6HfTjG5WbE1sDxnHy3PPYkdyK/PfwLKupCOCQ7uMqfTvX7mf8FBP2ebj9qL9kfxh4Rsdo1W5t1u9PJxk3EDrKignhS+wpnsHPavwV8G6g2m69CjeYuyTDA8HgjP64rlxHRnr5bZprqdhqsAtblYx8qhsNn6f0zU2lIkkRbGWV+WJ6/wCfam+LwzySbD8zLlD1x6V0HgG80nVPCUNi2nqusWrkPL5jHzoySQduduR06dOp6V5VZOT5VufS4OSUVOWp1HgPxFY6Ppp+0ESySKhMRfHy5XdjnBO0EY9TXVaJ+0JH4fN6v9mxszKBbzInlsHUlkZh2wwRsLx8vvWJ4b8PaX5UbSx52kRrHJJsWSQp1JUZ2KeemeTzlcNqr+yaPGOpwy2mo3l1BCgkwZTG0hAwGAXAG5wTg8hSo5xk51L01qe1hYxruyHn9oPxBJZR3kNxaxMsuxAMN5p47MT0x/Olj/aYlMjG6057hmb58SDAyeqj1HOAeOeelXvFH7EttH4bfVNURZ5rd4obUsG/ctJkjBB+XHB45+bOeoqrbfsa6ipiS4mkhyEaKNC8jTAjLbWHAK8cHtnJFc0Kk3LQ9OpgKcYdClq3xoj1xg09ibfKhflffGSG3devHHTPSuQ/4TeIs/mtvXOELduff8K9i0n9nh/h+01vqUi3McaYj8lgUnIwxU7vukZBBXAIJ6/dPIaxFZ6H4ij1S2tbC1eFlLEQK2/rwAwI+bgH29+a6o0XPdnh4iuqHu2vc5ETx3FwrKpXjBxWnqafYtDEi/L5h2g+1Z0ULXeoSTMsY3nJVRhQzdh7D0qbx1fG30y2t15ZUD4zjjn/AArqoxUZWPAxknJo7P8AY68D2fxX/an8E6HfTJDazakLmU7sNmFWlQDP8RkWMepz0r9pAMCvzH/4ImfDKPxX8b/Fni67tX/4p+zSzs5GXKNJKT5hViPvBVUcYIDY7nP6cV6lNe6fM4prnsgooorQ5wooooAKKKKACiiigAooooAKKKKAA81+Hn/BXv8AZUm/Zj/azvNas4be38LePJZNT01Y3P7qX5Dcxbe2JGLgDA2yqB0OP3Dr4L/4OE/AtprH7HWi+IXtfMvvDviKEJMq/NHFNDKrrn0LrFweCVWs6kbxOjC1HCqmj8xYNe/tXToZm4YRhcnjjt1/xp2lai9hqEdxbyeXNGcgqP0P1rz7Q/F63emFUmG7Iyufunp39fpW34f8QM6R7vmDyBM4HPP614OLjK90faZbyyfLc+g/g1430vUvEENrqR8mS42QI8h/dqzTQ/M3ouwSDjuR719I/s/wWv8AalvDLu+xtIGkZQfuqVHB64Kk/ia+EXll8lvK/wBZjIB9frXp3wg/aL1zwDax291az6hbRsfLkhH7xMjByOTwB/hyK4Y4pzVpn0WHwapvmiz75+JMcGsSNatGws5ruGfAIwqxptX24GOBjoan0xIbewM0jw71iURbuq9c479cfn7V8fxf8FINBntIhGtxcySYYkQyfKCehOOvHQ+3SqPiH/godppvW063h1abVJlG2ERGJYwQMfMT+o579a6uZx1sPTl5XNW9T174ufEO30lS1xcRN5bKSGOCVCHjHfkjjvXzf4g8WHVbwhXDQrgqMdT61zniz4g694/1MSTKPL6EsuW9vb1/CmadC4KmTjPLdv8APrU/WHsc1bDxm+dnVaJJ5kiseTkHn0ql4ot7rW9Qa3hjke4nlEMMQGWkdsKij1JJApNP1GK0u1Vmbcy/L8pOf8+tZvg3xVbeMfjH4f0qSSDaNYg81pEbyyFnXCkZycDO4Z79q9DCxbV2fL5lOMZaH7Df8E+P2W4/2Wv2f7HTbmG3HiDUv9K1aeLcfPlJOOWw2ADwCBtBxjivdKjtovIto4x0RQo/AVJXsHyLberCiiigAooooAKKKKACiiigAooooAKKKKACvlP/AILWWEd9/wAE5/GxkZVaCfTpU9c/boBx74J/Wvqa/v4dKsZrq5ljgt7dGllkdtqxqBkknsAOa/MH/gq5+05efHT4eXmm2bSW/hm2uk+yw7SDdMM4lk/I4XsD65ry8yzWhhOSFR+9N2S/X0R7WT5PiMdKU6S92Cu36dPV/wDBPxyutYuvC/iu4EKtJDIwJVl+Ujp1Hp/Suv8Ahd8Q11HXf9I8iJs5G3ODjkew+vPuegqt8XfBaWkEt8FMm9wGByQBggEc8ZOAT+vSvNNI1waZ4mtZsttiZWZChbL5b5M8E9BnHr0FdEYRqQNPbSw9dH2FZ65DDCpmZR5nHBzXqfwxmsb3RnkaaERLgAtwFfrtJGevHX+9Xy94a8aRXAjP7w3XleYHc9VPTHJzwevGPqK9M8I/GiDwXo/2DY66jqSt5EsEoV7dwc7zjqvJHGMY6c4rwZYO09EfZ08yjyXbOg8e+CLXSpJLryZJlmne7ZwN3mbmJzg8HjPoTgY4rldM0sa34k/tJofMWAMhk4UsG2deeo2nr61zPiP9oeS/tY7OZYpGmthHIfJZJI5DlSVPc7QmO3OOwAxLX4uNd+Cbq1i3TTMdpxiI2rlUJwmSWRXGNx6qinALbR6UaEmrHlVMypn0roN1p8mkKsPlbs/Ntbd9OfcVl+KNbtdMiZBcLHJIdi4PzK3XP0H9a+dbX4t3sdpdXUl5FIHjit3VJiHfHRS2Bhm2EgrgnnB6gVZPijMb24uDcXEu1SIohJt3bgeNzZIHY8ZHbk1nHLXzczZNbPE4csVqekeMfinb2/he42TW8tyyhPLZgwkz1bqD05GMc+uK0P2etH8zxHZ6pJIZLiCQEEseMkHnP+TXz/c+IJPEl6W8vPmAAlCW5ODyxAIA/wADmvoz4D28mgeHbXzPmkkxtO3AK54x9RXdiIqnSsj5/D1JV66cuh+ov7Ln7fOuajZWtjfXCzG3QR+RcgHcoBACtnd0H4elfZPw8+Jmm/EfSlntJBHcKuZbdj88Z/qPcfoeK/GX4W/EWG+063vbOT95BJuUqepBPGRX3H8A/idNe2FnqFnO9vcqoZXDevUEent0r8jwHFmMy3FuniG50m9m9V/hv+W3ofrnFXBGErYWOKwaUZNJ6bPTqv13PtmisH4eeNovHPh9Lhdq3EeEuIx/A+Oo9j1H5dQa3q/ZMPiKdelGtSd4yV0z8NrUp0punNWa3CiiitjMKKKKACiiigAooooAKKivL2HT7dpriWOGGMZZ3YKqj3JrxL4r/ty+HvBzPa6DH/wkF8pKlkbbbof9/wDi/D865MZjsPhYc+Ikor8/Rbs7MHgMRipcmHg5fkvV7Izv29vi9/wjvg+38KWcm281sCW7KnBjtlbp/wADYY+isO9fll+3V8UYfDc+h+G9ytdasZZ1T0SNfmb8GKj/AIFX1j8QfiFqHxQ8Y3mtapKGu7phwgxHEgGAqj0A/wAa/Nb/AIKJ648X7b+lxNIywWvhmPaoY43SXM+7jtkIv1xX5F/aH9rZ97W/uxvyrsl/nuz9vweXf2TkLpJLml8T7uX+S0R578V9RP8Awj8gjXduywUY5IwR+m769K8XutKFvE0iQrIxcOS2d0fXoeMZyATgnv617le2Meu6f5fzkMjKxJznPccdgR+I/LDXwBcKHWazsvJWNQDGuXRhkZXGOWAwcggkkkZ5r9SweISXKz81zDL51J80UeX2fiO50CONlLL5mIsAlmAGenOR1PBI5OOmcbHh/XrqTUorlJmhm2sRKHV2HIJwMnliO/TrjmtS4+H/APprW80M1vOoG9OI2AzyMMOMDByatP8ADpdLVZrL7RMvmqEhlQLNnltx28FdoPzA9iMA13e0geb7CqvdMrUPErJra3XmPLdYZo5TxMcA5Y454+9xnnHuaraX4hvLTXLaeK3jWG3fMmH2tO7HOC39wqAMAYK5FejWnwP+wz22oQ6tLHeMEuoLi2hCLZHhllWTIZXUrzgdsA5xnlz4Tuf7WfzbWa6kWcvEq/Ij7G3koVCnaR82FxgE8AcghUg9jCrh6sXdo5WSaR5LqTfHCszhhDHyq/McBdxJUKM4JJbnB6k1JZaTPfx26+XJtuF3oyOFzyRzwcA4JwcdVPTr1Vr4Ph/seHzLNmlkzI9wTIGmJJBBDewU8Afe5J5wS2EVvZPHJGib12My5wDjrnjHJP04HpWjkuhzxoyXxDbK0uJb+R5D5fyiJxvCyMF4XcBgNgqN3AyfrX0Z8PNUafwvZtIP3ixjOT0Hpz6YryfwJ4V/tC2tZI/OZ0+ZQEBG0Egtnuck4HOPevWNI0j/AIR/So4925Y1yWPfnPauHF1E48p6mX4dqXMec6V8Ubr4EeMpJFkuJvD91cEXESjcYckkFQSOOp65zX6IfsBfGTTfiB4bjuNJ1D7dY8or4KFGB5Qqfukdwfavzh+LWnpfaXqCt/yxxID7gg/yJr2r/gkN8RJPDvxI1bw6z/6PdBNRiB/v5WKTv3zF2/h+lfA8TZHQq4GWJjH342d+6/I/RsjzvESqxwNWd4O6SfR2013+R+yHwu8aN4P16G4LZtJwIrlQf4f73/Aev519Ao4kRWU7lYZBHcV8qeFJzdWEbD0z9K7rwp8T9Y0GCO1jufMhiOESYb8D0yef1rzuEeKIYKm8NibuLd01rZ9d+n6+p8zxHkMq9b2tGyktHfr2PcqK82H7QH2G2D3WltIqj53hk6e+0jj/AL6rT0X9oLw3qzhJLiawkJxi4jwP++lyPzIr9Ho8RZdVdo1Un56fnY+PqZLjYLmdNteWv5XO2orJXx9obDI1nS8Hn/j6T/GivS+uUP5196OH6tW/kf3M1qjvL2HT7ZpriaOCGMZZ5GCqo9yeK+atV/aT8VajaeSt3Da+rwQKHP4nP6YriNd8Q33iG4El/eXV4yngzSs/5Amvhsd4h4Okv3EHJ/Jf5v8AA+2wvAOLn/Hmo+mr/RfifSXi/wDaS8MeFo5FjuZNUuI+PLs13An/AHzhfyJr54+LP/BQrxMk8lvoel2OkR9ppybiU/oFH5GsZeX/AA/OvLfjXpzC5Xyf9ZIwUDHPuf59a+GzDxDzOtNRpNQi+y1+93/Q+6yPgXK4TtXTm/N6fcrfiO8RfHHxb8XJmbXNZu7uGNtiQ7gsRx1O1cD2qssPyhumf0rP0izFnHGuDtHr2rTJxXkyxlatedaTk+7dz6SeCoUX7PDxUY9ElZBaW5k3Nztr83f+CnlnJpf7YWm3GPLW60WBAQMb8TTjH/oPPvX6WWKbUwQecc18J/8ABYDwD9m8ReBvESKwjMs9jcP2ywSSMflHN0//AFdHC1ZRzOKf2k1+Bpn2Hc8rfL9lp/iv8zxXwnqMeFdseoGPWuw0RFlmBX5S/C7Tj/P415p4dvAlrEy7uuCK7rwpqYEwX7yg5Uj1/wA4r9X5pJps/P6UF1NbVfD8Ru45Xh3lFO4hCqEjOCR/njoadoGh2t3e7ZlcQsDDJIsG7YXBHAGONpbgehrsoYYdWs49saqrIAwB3BuOePfr/wDq4v8Ahbw1a2dwG8hWbcp9uOg/PHPWtY4q25nLBqTuil4Q8E/ZLOOzt4Y7618nb5hmkR1GWzuA+o4b07YINDXfgzbrpcklvnSrhEUEwsURgpB3soxlsA8/jwea9a8P+G0uLYSMrbug2gHHrke/NX5PC28/M27b0BQcfp6fy71p9av1Jll8bWaPDLv4TXPi53uPtircMSAohyrtjknIyAc44HGPwrpNK+B+mp9nf7MkckYG4xfK0hGedwGe5xjBzjrgV6dZeE7fSizRr8rDGPTmpniUKfp0qfrspKyOf6hTTu1qcUPCGnaBp6x29ja264xiOMKOncVy3inbGrIq7V2n8a7jX7pZUYj7uOPX/PFcJ4jXELP7ckGpUm1cl0oxeiPJvHaPJZ6kPvFoHx/3yf8ACuk/4Jt3Rh/ad0cK3/HxazpKfVQUf+aLXOeNTu0DUpP+mEmPXkED8q6v/glnoy6r+0PNenbt02xKKvfdI3BzjpiNh1zyOvOIzSV8uqr+6/yLyuP+3U35r8z9kvAUm+yXJJ+UY54reLeVN/nmud+HERaxjz/dHWukuU+fdn6mvxanoke7jrLESRbgm+T69q57xH4a+yZmgX9yzZIAzsJ/p/KteOcAgZ9quwHzl2sNysMEHpXVpUjaRx06kqMuaJw3kSf3h+VFdPJ4JtXkZt0nJz1/+tRWf1R/0z0P7Rpf0jzmaY5b25qEthqKK8Ws9D6emOL7Y/wrB1DSI9Vv2mkG75ABnqO5/PiiiuH7S/rodOG0bsZl34XjiPy7R34GKoPpCKP93/Ciivai3yhf3h0VmuNv5ccV87/8FPPBEPib9lHWLhm2zaLLb38JPqkoVx+MbyAe5FFFVlMmsfSa/mX5o9PFK+Ckn/K/yPz/APCvmSaTCsjK3yhx7ZrrvDE3ko3GW3Dn6/8A6qKK/cpbn5RT+I9Q8H6szQLHtC47iuw0/wCR4z13MDyOvPeiivPluehT2O68LT7YWX+6Rn3rdnuAsf3e+P8AP50UVSe5pIrairXNt5e4r6EVjzlo06/l0ooqqJ59fQ5vVpcIVI+7zx/hXN+KbNZ9EuCegjJ6UUV19DhqbHjPjWPd4G1Ru/2dj+eK9q/4I7eGIbzStY1pv9fdasbQjHRYYY2Xnv8ANNJx2/EgFFcmcNrLa3oGU64+l6n6q+BP3NnF/u44rob04Wiivx+Ox7GM/jv1KcUhdq0LJ9q/lRRVxb0OesXPPaiiium555//2Q==', 'SALARY_EARNER', 'Ikeja Electric', NULL, NULL, NULL, NULL, 0.00, 'STANDARD', 'SAVINGS_CREDIT', 70, NULL, NULL, NULL, 'NONE', NULL, NULL, NULL, 'ACTIVE', '2026-09-26', NULL, '2026-10-18T08:58:20', '2026-10-14T22:00:53', '2026-10-18T08:58:20', 'CUS_xrpgqzu1e57owa6', '9926000001', 'Wema Bank (Paystack DVA)', 'Wealthbridge / Qazeem Adebowale', NULL),
+(2, 'WMC-2026-002', 'Olaleke', 'Olaoye', 'Ebenezer', 'olaleke.olaoye@wealthbridge.ng', 'd1ecd2e22b4705bc4c96cbf07188e90b06585956c47e253923b9e194cad0a630', '07066482098', 'MALE', 'SINGLE', NULL, 'Ikorodu, Lagos State, Nigeria', 'NIN', 'NIN-WMC-FOUNDER-002', NULL, 'SALARY_EARNER', NULL, NULL, NULL, NULL, NULL, 0.00, 'STANDARD', 'SAVINGS_CREDIT', 60, NULL, NULL, NULL, 'NONE', NULL, NULL, NULL, 'ACTIVE', '2026-09-26', NULL, '2026-10-18T08:57:11', '2026-10-14T22:00:53', '2026-10-25T14:45:11', 'CUS_kbrlamjkks37ppv', '9926000002', 'Wema Bank (Paystack DVA)', 'Wealthbridge / Olaleke Olaoye', NULL),
+(3, 'WMC-2026-003', 'Sulaimon', 'Olajide', 'Akinola', 'sulaimon.olajide@wealthbridge.ng', 'a65d26d84db6cbe41121d58cf5f5cbb819c9e54d89e248b64b1509176bf7d848', '08039273458', 'MALE', 'SINGLE', NULL, 'Lagos State, Nigeria', 'NIN', 'NIN-WMC-FOUNDER-003', NULL, 'PROFESSIONAL', NULL, NULL, NULL, NULL, NULL, 0.00, 'STANDARD', 'SAVINGS_CREDIT', 20, NULL, NULL, NULL, 'NONE', NULL, NULL, NULL, 'ACTIVE', '2026-09-26', NULL, NULL, '2026-10-14T22:00:53', '2026-10-14T22:00:53', NULL, NULL, NULL, NULL, NULL),
+(4, 'WMC-2026-004', 'Rukayat', 'Yahaya', 'Temitope', 'rukayat.yahaya@wealthbridge.ng', 'a65d26d84db6cbe41121d58cf5f5cbb819c9e54d89e248b64b1509176bf7d848', '08168540916', 'FEMALE', 'SINGLE', NULL, 'Lagos State, Nigeria', 'NIN', 'NIN-WMC-FOUNDER-004', NULL, 'SALARY_EARNER', NULL, NULL, NULL, NULL, NULL, 0.00, 'STANDARD', 'SAVINGS_CREDIT', 20, NULL, NULL, NULL, 'NONE', NULL, NULL, NULL, 'ACTIVE', '2026-09-26', NULL, NULL, '2026-10-14T22:00:53', '2026-10-14T22:00:53', NULL, NULL, NULL, NULL, NULL),
+(5, 'WMC-2026-005', 'Evelyn', 'Omokosi', NULL, 'evelyn.omokosi@wealthbridge.ng', 'd1ecd2e22b4705bc4c96cbf07188e90b06585956c47e253923b9e194cad0a630', '08032342401', 'FEMALE', 'SINGLE', NULL, 'Lagos State, Nigeria', 'NIN', 'NIN-WMC-FOUNDER-005', NULL, 'PROFESSIONAL', NULL, NULL, NULL, NULL, NULL, 0.00, 'STANDARD', 'SAVINGS_CREDIT', 60, NULL, NULL, NULL, 'NONE', NULL, NULL, NULL, 'ACTIVE', '2026-09-26', NULL, '2026-10-18T05:52:07', '2026-10-14T22:00:53', '2026-10-18T05:52:07', 'CUS_ll4w8dxbxzolqhe', '9926000005', 'Wema Bank (Paystack DVA)', 'Wealthbridge / Evelyn Omokosi', NULL),
+(6, 'WMC-2026-006', 'Yusuf', 'Adebowale', 'Adekoya', 'yusuf.adebowale@wealthbridge.ng', 'a65d26d84db6cbe41121d58cf5f5cbb819c9e54d89e248b64b1509176bf7d848', '08130201653', 'MALE', 'SINGLE', NULL, 'Lagos State, Nigeria', 'NIN', 'NIN-WMC-FOUNDER-006', NULL, 'PROFESSIONAL', NULL, NULL, NULL, NULL, NULL, 0.00, 'STANDARD', 'SAVINGS_CREDIT', 20, NULL, NULL, NULL, 'NONE', NULL, NULL, NULL, 'ACTIVE', '2026-09-26', NULL, NULL, '2026-10-14T22:00:53', '2026-10-14T22:00:53', NULL, NULL, NULL, NULL, NULL),
+(7, 'WMC-2026-007', 'Hammed', 'Badmus', 'Oriyomi', 'hammed.badmus@wealthbridge.ng', 'a65d26d84db6cbe41121d58cf5f5cbb819c9e54d89e248b64b1509176bf7d848', '07080034088', 'MALE', 'SINGLE', NULL, 'Lagos State, Nigeria', 'NIN', 'NIN-WMC-FOUNDER-007', NULL, 'PROFESSIONAL', NULL, NULL, NULL, NULL, NULL, 0.00, 'STANDARD', 'SAVINGS_CREDIT', 20, NULL, NULL, NULL, 'NONE', NULL, NULL, NULL, 'ACTIVE', '2026-09-26', NULL, NULL, '2026-10-14T22:00:53', '2026-10-14T22:00:53', NULL, NULL, NULL, NULL, NULL),
+(8, 'WMC-2026-008', 'Azeezat', 'Adebowale', 'Rukayat', 'azeezat.adebowale@wealthbridge.ng', 'd1ecd2e22b4705bc4c96cbf07188e90b06585956c47e253923b9e194cad0a630', '09133448925', 'FEMALE', 'MARRIED', NULL, 'Lagos State, Nigeria', 'NIN', 'NIN-WMC-FOUNDER-008', NULL, 'SALARY_EARNER', 'Lagos State Judicial Service Commission', NULL, NULL, NULL, NULL, 0.00, 'PLUS', 'SAVINGS_CREDIT', 70, NULL, NULL, NULL, 'NONE', NULL, NULL, NULL, 'ACTIVE', '2026-09-26', NULL, '2026-10-15T13:54:39', '2026-10-14T22:00:53', '2026-10-15T13:54:39', NULL, NULL, NULL, NULL, NULL),
+(14, 'WMC-2026-009', 'Amara', 'Ugbana', NULL, 'amaraugbana@ikejaelectric.com', 'd1ecd2e22b4705bc4c96cbf07188e90b06585956c47e253923b9e194cad0a630', '07014140018', 'MALE', 'SINGLE', NULL, 'My house', 'NIN', 'NIN-KYC-009', NULL, 'SALARY_EARNER', 'Self/Corporate', NULL, NULL, NULL, NULL, 0.00, 'STANDARD', 'SAVINGS_CREDIT', 20, NULL, NULL, NULL, 'NONE', NULL, NULL, NULL, 'ACTIVE', '2026-10-16', NULL, '2026-10-15T13:56:47', '2026-10-15T13:56:26', '2026-10-16T14:31:18', NULL, NULL, NULL, NULL, NULL),
+(15, 'WMC-2026-015', 'Abdul Wasiu', 'Adebowale', NULL, 'adexwhaq4real@gmail.com', 'd1ecd2e22b4705bc4c96cbf07188e90b06585956c47e253923b9e194cad0a630', '07034517983', 'MALE', 'SINGLE', NULL, '13, Agbaje Iloro Street, Odogunyan', 'NIN', 'NIN-KYC-015', NULL, 'SALARY_EARNER', 'Self/Corporate', NULL, NULL, NULL, NULL, 0.00, 'PLUS', 'SAVINGS_CREDIT', 60, NULL, NULL, NULL, 'NONE', NULL, NULL, NULL, 'ACTIVE', '2026-10-17', NULL, '2026-10-18T05:55:30', '2026-10-17T08:24:12', '2026-10-18T05:55:30', 'CUS_djhk2ujknn79uk0', '9926000015', 'Wema Bank (Paystack DVA)', 'Wealthbridge / Abdul Wasiu Adebowale', NULL),
+(16, 'WMC-2026-016', 'Yusuf', 'Adekoya', NULL, 'adekoya100@gmail.com', '3cf8d2d803f18c2d757db82f4f9c751b4b35bab3c30d061de6b58517e941f0b0', '08130201683', 'MALE', 'SINGLE', NULL, '8, Living Street, Off Saka  Jojo street Odogunyan ikorodu, lagos', 'NIN', 'NIN-KYC-016', NULL, 'BUSINESS_OWNER', 'Self/Corporate', NULL, NULL, NULL, NULL, 0.00, 'PREMIUM', 'SAVINGS_CREDIT', 20, NULL, NULL, NULL, 'NONE', NULL, NULL, NULL, 'SUSPENDED', '2026-10-17', NULL, '2026-10-17T12:29:41', '2026-10-17T12:29:30', '2026-10-17T17:08:23', 'CUS_76cyet0848zr3ab', '9926000016', 'Wema Bank (Paystack DVA)', 'Wealthbridge / Yusuf Adekoya', NULL),
+(10021, 'WMC-TEST-ARR', 'Tunde', 'Arrears', NULL, 'test_arrears@wealthbridge.ng', 'd1ecd2e22b4705bc4c96cbf07188e90b06585956c47e253923b9e194cad0a630', '08099887766', 'MALE', 'SINGLE', NULL, 'Ikorodu Road, Lagos', 'NIN', '12345678901', NULL, 'SALARY_EARNER', NULL, NULL, NULL, NULL, NULL, 0.00, 'STANDARD', 'SAVINGS_CREDIT', 60, NULL, NULL, NULL, 'NONE', NULL, NULL, NULL, 'SUSPENDED', '2026-10-18', NULL, '2026-10-18T08:57:11', '2026-10-18T08:57:11', '2026-10-18T08:57:11', NULL, NULL, NULL, NULL, NULL)
+ON CONFLICT DO NOTHING;
+
+SELECT setval(pg_get_serial_sequence('public.members', 'id'), COALESCE((SELECT MAX(id) FROM public.members), 1), true);
+
+-- ---------------------------------------------------------------------
+-- Table: next_of_kin (1 records)
+-- ---------------------------------------------------------------------
+INSERT INTO public.next_of_kin (id, member_id, full_name, relationship, phone, email, residential_address, allocation_percentage, created_at, updated_at) VALUES
+(1, 8, 'Adebowale Family Trust', 'FAMILY_TRUST', '08022223344', NULL, 'Lagos State, Nigeria', 100.00, '2026-10-14T22:51:13', '2026-10-14T22:51:13')
+ON CONFLICT DO NOTHING;
+
+SELECT setval(pg_get_serial_sequence('public.next_of_kin', 'id'), COALESCE((SELECT MAX(id) FROM public.next_of_kin), 1), true);
+
+-- ---------------------------------------------------------------------
+-- Table: officers (6 records)
+-- ---------------------------------------------------------------------
+INSERT INTO public.officers (id, member_id, portfolio, appointment_date, tenure_end_date, is_active, created_at) VALUES
+(1, 1, 'PRESIDENT', '2026-09-26', NULL, TRUE, '2026-10-14T22:00:54'),
+(2, 2, 'GENERAL_SECRETARY', '2026-09-26', NULL, TRUE, '2026-10-14T22:00:54'),
+(3, 3, 'LEGAL_COMPLIANCE_LEAD', '2026-09-26', NULL, TRUE, '2026-10-14T22:00:54'),
+(4, 4, 'FINANCIAL_SECRETARY', '2026-09-26', NULL, TRUE, '2026-10-14T22:00:54'),
+(5, 5, 'TREASURER', '2026-09-26', NULL, TRUE, '2026-10-14T22:00:54'),
+(6, 6, 'TECHNOLOGY_SYSTEMS_LEAD', '2026-09-26', NULL, TRUE, '2026-10-14T22:00:54')
+ON CONFLICT DO NOTHING;
+
+SELECT setval(pg_get_serial_sequence('public.officers', 'id'), COALESCE((SELECT MAX(id) FROM public.officers), 1), true);
+
+-- ---------------------------------------------------------------------
+-- Table: chart_of_accounts (23 records)
+-- ---------------------------------------------------------------------
+INSERT INTO public.chart_of_accounts (id, account_code, account_name, account_type, description, is_active, is_system_controlled, created_at) VALUES
+(1, '1010', 'Polaris Bank Current Escrow Account', 'ASSET', 'Primary commercial banking escrow partner for member deposits & payments', TRUE, TRUE, '2026-10-18T06:45:38'),
+(2, '1020', 'Dedicated Virtual Accounts (DVA) Clearing', 'ASSET', 'Paystack automated incoming collection clearing pool', TRUE, TRUE, '2026-10-18T06:45:38'),
+(3, '1030', 'Member Loan Facilities Receivable', 'ASSET', 'Outstanding loan principal receivables due from active borrowers', TRUE, TRUE, '2026-10-18T06:45:38'),
+(4, '1040', 'Disciplinary Fines Receivable', 'ASSET', 'Outstanding disciplinary fines issued to members', TRUE, TRUE, '2026-10-18T06:45:38'),
+(5, '2010', 'Member Regular Savings Deposits', 'LIABILITY', 'Demand savings deposits held in trust for cooperators (2x borrowing collateral)', TRUE, TRUE, '2026-10-18T06:45:38'),
+(6, '2020', 'Member Target Savings Deposits', 'LIABILITY', 'Fixed-goal target savings locked until stated maturity date', TRUE, TRUE, '2026-10-18T06:45:38'),
+(7, '2030', 'Welfare Solidarity Pool', 'LIABILITY', 'Mutual aid solidarity reserve for medical, bereavement, and critical life events', TRUE, TRUE, '2026-10-18T06:45:38'),
+(8, '2040', 'Unallocated Remittance Suspense', 'LIABILITY', 'Incoming payments awaiting reconciliation and waterfall allocation', TRUE, TRUE, '2026-10-18T06:45:38'),
+(9, '3010', 'Member Paid-Up Share Capital', 'EQUITY', 'Cooperator equity units held at NGN 1,000 per unit (20% anti-monopoly ceiling)', TRUE, TRUE, '2026-10-18T06:45:38'),
+(10, '3020', 'Statutory Reserve Fund (Cap C15)', 'EQUITY', 'Mandatory 50% statutory reserve accumulated from annual operational surplus', TRUE, TRUE, '2026-10-18T06:45:38'),
+(11, '3030', 'Education & Cooperative Development Reserve', 'EQUITY', 'General and educational reserve allocated under Bye-Laws Article 24', TRUE, TRUE, '2026-10-18T06:45:38'),
+(12, '3040', 'Retained Operating Surplus', 'EQUITY', 'Accumulated net surplus from cooperative operations carried forward', TRUE, TRUE, '2026-10-18T06:45:38'),
+(13, '4010', 'Loan Administrative Cost-Recovery Fees', 'INCOME', 'Statutory 2.5% administrative cost-recovery fee on loan facilities', TRUE, TRUE, '2026-10-18T06:45:38'),
+(14, '4020', 'Member Entrance & Registration Fees', 'INCOME', 'Statutory flat NGN 5,000 entrance fee collected from new members', TRUE, TRUE, '2026-10-18T06:45:38'),
+(15, '4030', 'Passbook & Physical ID Card Issuance Fees', 'INCOME', 'Physical passbook and electronic ID card production fees', TRUE, TRUE, '2026-10-18T06:45:38'),
+(16, '4040', 'Disciplinary Fines Collected', 'INCOME', 'Fines liquidated from disciplinary infractions under Bye-Laws Article 12', TRUE, TRUE, '2026-10-18T06:45:38'),
+(17, '4050', 'Membership Exit Processing Fees', 'INCOME', 'Statutory NGN 5,000 administrative exit fee liquidated upon voluntary withdrawal', TRUE, TRUE, '2026-10-18T06:45:38'),
+(18, '4060', 'Sundry & Incidental Income', 'INCOME', 'Miscellaneous operational receipts and donations', TRUE, TRUE, '2026-10-18T06:45:38'),
+(19, '5010', 'Bank & Payment Gateway Processing Charges', 'EXPENSE', 'Polaris Bank and Paystack transaction/settlement fees', TRUE, TRUE, '2026-10-18T06:45:38'),
+(20, '5020', 'Bereavement & Welfare Assistance Grants Paid', 'EXPENSE', 'Statutory NGN 100k bereavement grants and medical assistance disbursed', TRUE, TRUE, '2026-10-18T06:45:38'),
+(21, '5030', 'Annual General Meeting & Governance Expenses', 'EXPENSE', 'Meeting packs, statutory AGM hosting, and election logistics', TRUE, TRUE, '2026-10-18T06:45:38'),
+(22, '5040', 'Secretariat, Legal & Audit Retainer Fees', 'EXPENSE', 'Legal compliance, Lagos State regulatory dues, and external audit', TRUE, TRUE, '2026-10-18T06:45:38'),
+(23, '5050', 'Technology Infrastructure & SMS Alerting', 'EXPENSE', 'Hosting, database maintenance, domain, and notification services', TRUE, TRUE, '2026-10-18T06:45:38')
+ON CONFLICT DO NOTHING;
+
+SELECT setval(pg_get_serial_sequence('public.chart_of_accounts', 'id'), COALESCE((SELECT MAX(id) FROM public.chart_of_accounts), 1), true);
+
+-- ---------------------------------------------------------------------
+-- Table: journal_entries (260 records)
+-- ---------------------------------------------------------------------
+INSERT INTO public.journal_entries (id, entry_number, entry_date, source_module, source_reference, narration, total_debit, total_credit, is_balanced, status, created_by, approved_by, approved_at, supporting_doc_url, created_at) VALUES
+(1, 'JE-20261018-8C0D67EB', '2026-10-14', 'REMITTANCE_WATERFALL', 'TX-TSD-1792014498325-DE0C7BB8', 'Initial deposit for 40th Milestone Birthday Celebration Target', 50000.00, 50000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T06:55:00'),
+(2, 'JE-20261018-CF201EA9', '2026-10-14', 'REMITTANCE_WATERFALL', 'TX-TSD-1792014498460-85568BB8', 'Monthly bonus top-up for 40th Birthday', 75000.00, 75000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T06:55:00'),
+(3, 'JE-20261018-21A77525', '2026-10-14', 'REMITTANCE_WATERFALL', 'TX-TSW-1792014498674-6A57428F', 'Maturity Payout for 40th Milestone Birthday Celebration Target to Polaris Bank Limited 1140029381', 50000.00, 50000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T06:55:00'),
+(4, 'JE-20261018-34CC2F51', '2026-10-14', 'REMITTANCE_WATERFALL', 'TX-TSW-1792014498744-726C5824', 'Maturity Payout for 40th Milestone Birthday Celebration Target to Polaris Bank Limited 1140029381', 75000.00, 75000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T06:55:00'),
+(5, 'JE-20261018-7AB1E70B', '2026-10-14', 'REMITTANCE_WATERFALL', 'TX-TSD-1792014644690-1327067D', 'Initial deposit for Harvard Executive Leadership Certificate', 100000.00, 100000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T06:55:00'),
+(6, 'JE-20261018-EF6E430E', '2026-10-14', 'REMITTANCE_WATERFALL', 'TX-TSD-1792014644812-EFBB339A', 'Quarterly allocation', 50000.00, 50000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T06:55:00'),
+(7, 'JE-20261018-8C6307DA', '2026-10-14', 'REMITTANCE_WATERFALL', 'TX-PST-1792017672599-918B4485', 'Paystack Inward Transfer: DVA 9926000001', 5000.00, 5000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T06:55:00'),
+(8, 'JE-20261018-AB25301A', '2026-10-14', 'REMITTANCE_WATERFALL', 'TX-TSD-1792017688140-2FBDB8CD', 'Initial deposit for 40th Milestone Birthday Celebration Target', 50000.00, 50000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T06:55:00'),
+(9, 'JE-20261018-E232E191', '2026-10-14', 'REMITTANCE_WATERFALL', 'TX-TSD-1792017688211-AE5B7BBE', 'Monthly bonus top-up for 40th Birthday', 75000.00, 75000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T06:55:00'),
+(10, 'JE-20261018-9B866822', '2026-10-14', 'REMITTANCE_WATERFALL', 'TX-TSW-1792017688373-25117AF3', 'Maturity Payout for 40th Milestone Birthday Celebration Target to Polaris Bank Limited 1140029381', 50000.00, 50000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T06:55:00'),
+(11, 'JE-20261018-6BC5FA1A', '2026-10-14', 'REMITTANCE_WATERFALL', 'TX-TSW-1792017688421-0023ACA7', 'Maturity Payout for 40th Milestone Birthday Celebration Target to Polaris Bank Limited 1140029381', 75000.00, 75000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T06:55:00'),
+(12, 'JE-20261018-74C6F6FB', '2026-10-15', 'REMITTANCE_WATERFALL', 'TXN-WLF-1-1792067575', 'Welfare Solidarity Pool Levy (Adv #WMC-ADV-202610-0001)', 1000.00, 1000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T06:55:00'),
+(13, 'JE-20261018-7A939B0A', '2026-10-15', 'REMITTANCE_WATERFALL', 'TXN-SHR-1-1792067575', 'Share Capital Equity Subscription (1 units)', 1000.00, 1000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T06:55:00'),
+(14, 'JE-20261018-9682D15A', '2026-10-15', 'REMITTANCE_WATERFALL', 'TXN-SAV-1-1792067575', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001)', 1000.00, 1000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T06:55:00'),
+(15, 'JE-20261018-684A1391', '2026-10-15', 'REMITTANCE_WATERFALL', 'TXN-SAV-1-1792067593542-B04D1A', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001)', 3000.00, 3000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T06:55:00'),
+(16, 'JE-20261018-84219E8E', '2026-10-15', 'REMITTANCE_WATERFALL', 'TXN-SAV-1-1792067593595-DB6CA7', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001)', 4000.00, 4000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T06:55:00'),
+(17, 'JE-20261018-8B7AC3B1', '2026-10-15', 'REMITTANCE_WATERFALL', 'TXN-SAV-1-1792067593677-69CAC4', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001) [Includes Surplus: NGN 15,000.00]', 15000.00, 15000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T06:55:00'),
+(18, 'JE-20261018-253FC326', '2026-10-15', 'REMITTANCE_WATERFALL', 'TX-PST-1792067609009-478B7FC1', 'Paystack Inward Transfer: DVA 9926000001', 5000.00, 5000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T06:55:00'),
+(19, 'JE-20261018-5A192994', '2026-10-15', 'REMITTANCE_WATERFALL', 'TXN-SAV-1-1792067609051-D22C3F', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001) [Includes Surplus: NGN 5,000.00]', 5000.00, 5000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T06:55:00'),
+(20, 'JE-20261018-3FB3E4BE', '2026-10-15', 'REMITTANCE_WATERFALL', 'TXN-SAV-1-1792067675675-17842B', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001) [Includes Surplus: NGN 3,000.00]', 3000.00, 3000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T06:55:00'),
+(21, 'JE-20261018-C4D706A1', '2026-10-15', 'REMITTANCE_WATERFALL', 'TXN-SAV-1-1792067675742-155E97', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001) [Includes Surplus: NGN 15,000.00]', 15000.00, 15000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T06:55:00'),
+(22, 'JE-20261018-0693F307', '2026-10-15', 'REMITTANCE_WATERFALL', 'TXN-SAV-1-1792068163590-A919FF', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001) [Includes Surplus: NGN 3,000.00]', 3000.00, 3000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T06:55:00'),
+(23, 'JE-20261018-9698B027', '2026-10-15', 'REMITTANCE_WATERFALL', 'TXN-SAV-1-1792068163655-78CD84', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001) [Includes Surplus: NGN 15,000.00]', 15000.00, 15000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T06:55:00'),
+(24, 'JE-20261018-408A0A6F', '2026-10-15', 'REMITTANCE_WATERFALL', 'TX-PST-1792068177859-053DA657', 'Paystack Inward Transfer: DVA 9926000001', 5000.00, 5000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T06:55:00'),
+(25, 'JE-20261018-B30E330F', '2026-10-15', 'REMITTANCE_WATERFALL', 'TXN-SAV-1-1792068177892-C346E2', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001) [Includes Surplus: NGN 5,000.00]', 5000.00, 5000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T06:55:00'),
+(26, 'JE-20261018-E1B78016', '2026-10-15', 'REMITTANCE_WATERFALL', 'TX-TSD-1792068182509-F4A99ACE', 'Initial deposit for 40th Milestone Birthday Celebration Target', 50000.00, 50000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T06:55:00'),
+(27, 'JE-20261018-E0C2E4F6', '2026-10-15', 'REMITTANCE_WATERFALL', 'TX-TSD-1792068182538-E0A71DFB', 'Monthly bonus top-up for 40th Birthday', 75000.00, 75000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T06:55:00'),
+(28, 'JE-20261018-6BACB0B7', '2026-10-15', 'REMITTANCE_WATERFALL', 'TX-TSW-1792068182604-96E47BCD', 'Maturity Payout for 40th Milestone Birthday Celebration Target to Polaris Bank Limited 1140029381', 50000.00, 50000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T06:55:00'),
+(29, 'JE-20261018-457D17CC', '2026-10-15', 'REMITTANCE_WATERFALL', 'TX-TSW-1792068182633-B18AB057', 'Maturity Payout for 40th Milestone Birthday Celebration Target to Polaris Bank Limited 1140029381', 75000.00, 75000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T06:55:00'),
+(30, 'JE-20261018-5006FEF1', '2026-10-15', 'REMITTANCE_WATERFALL', 'TXN-SAV-1-1792068886142-0B8DA1', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001) [Includes Surplus: NGN 3,000.00]', 3000.00, 3000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T06:55:00'),
+(31, 'JE-20261018-17861D5C', '2026-10-15', 'REMITTANCE_WATERFALL', 'TXN-SAV-1-1792068886190-CE07B0', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001) [Includes Surplus: NGN 15,000.00]', 15000.00, 15000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(32, 'JE-20261018-CEAC29C7', '2026-10-15', 'REMITTANCE_WATERFALL', 'TXN-SAV-1-1792070771414-97ABBC', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001) [Includes Surplus: NGN 3,000.00]', 3000.00, 3000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(33, 'JE-20261018-16FF2EBE', '2026-10-15', 'REMITTANCE_WATERFALL', 'TXN-SAV-1-1792070771549-D2D697', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001) [Includes Surplus: NGN 15,000.00]', 15000.00, 15000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(34, 'JE-20261018-330CDDFB', '2026-10-15', 'REMITTANCE_WATERFALL', 'TX-PST-1792070791756-02DC1E7D', 'Paystack Inward Transfer: DVA 9926000001', 5000.00, 5000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(35, 'JE-20261018-DBC7E5AB', '2026-10-15', 'REMITTANCE_WATERFALL', 'TXN-SAV-1-1792070791807-502537', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001) [Includes Surplus: NGN 5,000.00]', 5000.00, 5000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(36, 'JE-20261018-1200E673', '2026-10-16', 'REMITTANCE_WATERFALL', 'TXN-SAV-1-1792146019501-E4D289', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001) [Includes Surplus: NGN 3,000.00]', 3000.00, 3000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(37, 'JE-20261018-6F70ED25', '2026-10-16', 'REMITTANCE_WATERFALL', 'TXN-SAV-1-1792146019600-E4F6C0', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001) [Includes Surplus: NGN 15,000.00]', 15000.00, 15000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(38, 'JE-20261018-5DD066D0', '2026-10-16', 'REMITTANCE_WATERFALL', 'TX-TSD-1792146029396-637186B5', 'Initial deposit for 40th Milestone Birthday Celebration Target', 50000.00, 50000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(39, 'JE-20261018-46D27A18', '2026-10-16', 'REMITTANCE_WATERFALL', 'TX-TSD-1792146029427-945A0ACF', 'Monthly bonus top-up for 40th Birthday', 75000.00, 75000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(40, 'JE-20261018-EEFE518A', '2026-10-16', 'REMITTANCE_WATERFALL', 'TX-TSW-1792146029499-AF59C189', 'Maturity Payout for 40th Milestone Birthday Celebration Target to Polaris Bank Limited 1140029381', 50000.00, 50000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(41, 'JE-20261018-6112CAC7', '2026-10-16', 'REMITTANCE_WATERFALL', 'TX-TSW-1792146029534-E8E4DF6C', 'Maturity Payout for 40th Milestone Birthday Celebration Target to Polaris Bank Limited 1140029381', 75000.00, 75000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(42, 'JE-20261018-23706A22', '2026-10-17', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-4B4CF300', 'Loan disbursement for L-WMC-2026-4B4CF300', 60000.00, 60000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(43, 'JE-20261018-6934642B', '2026-10-17', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-7CDE907B', 'Loan disbursement for L-WMC-2026-7CDE907B', 60000.00, 60000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(44, 'JE-20261018-838B4E43', '2026-10-17', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-9EB12EA0', 'Loan disbursement for L-WMC-2026-9EB12EA0', 50000.00, 50000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(45, 'JE-20261018-5399FF33', '2026-10-17', 'REMITTANCE_WATERFALL', 'TXN-WLF-2-1792235755358-FBE4EA', 'Welfare Solidarity Pool Levy (Adv #WMC-ADV-202610-0002)', 1000.00, 1000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(46, 'JE-20261018-BE41300C', '2026-10-17', 'REMITTANCE_WATERFALL', 'TXN-SHR-2-1792235755358-FBE4EA', 'Share Capital Equity Subscription (1 units)', 1000.00, 1000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(47, 'JE-20261018-C9BFB1BB', '2026-10-17', 'REMITTANCE_WATERFALL', 'TXN-SAV-2-1792235755358-FBE4EA', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 15,000.00]', 23000.00, 23000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(48, 'JE-20261018-0C0C5E63', '2026-10-17', 'REMITTANCE_WATERFALL', 'DIR-CR-F527262DDC', 'Test Direct Credit', 10000.00, 10000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(49, 'JE-20261018-3B625622', '2026-10-17', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-E600E75C', 'Loan disbursement for L-WMC-2026-E600E75C', 60000.00, 60000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(50, 'JE-20261018-D09B458E', '2026-10-17', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-19495C0D', 'Loan disbursement for L-WMC-2026-19495C0D', 50000.00, 50000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:01')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.journal_entries (id, entry_number, entry_date, source_module, source_reference, narration, total_debit, total_credit, is_balanced, status, created_by, approved_by, approved_at, supporting_doc_url, created_at) VALUES
+(51, 'JE-20261018-CDE02D56', '2026-10-17', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-F4289A87', 'Loan disbursement for L-WMC-2026-F4289A87', 60000.00, 60000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(52, 'JE-20261018-F7C8B25D', '2026-10-17', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-1B64AC71', 'Loan disbursement for L-WMC-2026-1B64AC71', 50000.00, 50000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(53, 'JE-20261018-AC426FF7', '2026-10-17', 'REMITTANCE_WATERFALL', 'TXN-SAV-2-1792235919585-7C94AB', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', 25000.00, 25000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(54, 'JE-20261018-0BBF6008', '2026-10-17', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-024087A4', 'Loan disbursement for L-WMC-2026-024087A4', 60000.00, 60000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(55, 'JE-20261018-3E931E8D', '2026-10-17', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-6B760A07', 'Loan disbursement for L-WMC-2026-6B760A07', 50000.00, 50000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(56, 'JE-20261018-11F660A3', '2026-10-17', 'REMITTANCE_WATERFALL', 'TXN-SAV-2-1792235977303-BC9C24', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', 25000.00, 25000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(57, 'JE-20261018-9CD09B4D', '2026-10-17', 'REMITTANCE_WATERFALL', 'DIR-CR-9FFD969684', 'Statutory incentive dividend allocation authorized by Board', 10000.00, 10000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(58, 'JE-20261018-D9BF6F7F', '2026-10-17', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-C047AD92', 'Loan disbursement for L-WMC-2026-C047AD92', 60000.00, 60000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(59, 'JE-20261018-CFAD4DD7', '2026-10-17', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-25CED089', 'Loan disbursement for L-WMC-2026-25CED089', 50000.00, 50000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(60, 'JE-20261018-91C13B45', '2026-10-17', 'REMITTANCE_WATERFALL', 'TXN-SAV-2-1792236055851-0AA6A4', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', 25000.00, 25000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(61, 'JE-20261018-241991ED', '2026-10-17', 'REMITTANCE_WATERFALL', 'DIR-CR-1C0A4F7841', 'Statutory incentive dividend allocation authorized by Board', 10000.00, 10000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(62, 'JE-20261018-AD3CFB76', '2026-10-17', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-D7E76024', 'Loan disbursement for L-WMC-2026-D7E76024', 60000.00, 60000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(63, 'JE-20261018-41717D15', '2026-10-17', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-F811C6EA', 'Loan disbursement for L-WMC-2026-F811C6EA', 50000.00, 50000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(64, 'JE-20261018-A66E2307', '2026-10-17', 'REMITTANCE_WATERFALL', 'TXN-SAV-2-1792236092300-9362C4', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', 25000.00, 25000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(65, 'JE-20261018-754999B9', '2026-10-17', 'REMITTANCE_WATERFALL', 'DIR-CR-622F56BA5D', 'Statutory incentive dividend allocation authorized by Board', 10000.00, 10000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(66, 'JE-20261018-6AA8E473', '2026-10-17', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-3E14355D', 'Loan disbursement for L-WMC-2026-3E14355D', 60000.00, 60000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(67, 'JE-20261018-E1CF353E', '2026-10-17', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-16B82E09', 'Loan disbursement for L-WMC-2026-16B82E09', 50000.00, 50000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(68, 'JE-20261018-4CBB4FA3', '2026-10-17', 'REMITTANCE_WATERFALL', 'TXN-SAV-2-1792236155526-3B4423', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', 25000.00, 25000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(69, 'JE-20261018-0AB61575', '2026-10-17', 'REMITTANCE_WATERFALL', 'DIR-CR-03356AB3E0', 'Statutory incentive dividend allocation authorized by Board', 10000.00, 10000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(70, 'JE-20261018-299A5CCC', '2026-10-17', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-ACD892B1', 'Loan disbursement for L-WMC-2026-ACD892B1', 60000.00, 60000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(71, 'JE-20261018-716D313E', '2026-10-17', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-9EB3E69D', 'Loan disbursement for L-WMC-2026-9EB3E69D', 50000.00, 50000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(72, 'JE-20261018-EC271D1B', '2026-10-17', 'REMITTANCE_WATERFALL', 'TXN-SAV-2-1792237835278-DF5DD4', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', 25000.00, 25000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(73, 'JE-20261018-3AA92F9A', '2026-10-17', 'REMITTANCE_WATERFALL', 'DIR-CR-F23D888266', 'Statutory incentive dividend allocation authorized by Board', 10000.00, 10000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(74, 'JE-20261018-3FAA5987', '2026-10-17', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-B08B212F', 'Loan disbursement for L-WMC-2026-B08B212F', 50000.00, 50000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(75, 'JE-20261018-89B319F9', '2026-10-17', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-4D6E3006', 'Loan disbursement for L-WMC-2026-4D6E3006', 60000.00, 60000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(76, 'JE-20261018-415AE12B', '2026-10-17', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-308E47FD', 'Loan disbursement for L-WMC-2026-308E47FD', 50000.00, 50000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(77, 'JE-20261018-1A62C77F', '2026-10-17', 'REMITTANCE_WATERFALL', 'TXN-SAV-2-1792255004514-AFB501', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', 25000.00, 25000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(78, 'JE-20261018-727199F3', '2026-10-17', 'REMITTANCE_WATERFALL', 'DIR-CR-3D2FACB6E2', 'Statutory incentive dividend allocation authorized by Board', 10000.00, 10000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:01'),
+(79, 'JE-20261018-C030DE7B', '2026-10-17', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-AB3FE649', 'Loan disbursement for L-WMC-2026-AB3FE649', 60000.00, 60000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:02'),
+(80, 'JE-20261018-C2169FFA', '2026-10-17', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-D1EFAC40', 'Loan disbursement for L-WMC-2026-D1EFAC40', 50000.00, 50000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:02'),
+(81, 'JE-20261018-854CBD3A', '2026-10-17', 'REMITTANCE_WATERFALL', 'TXN-SAV-2-1792255535530-12206E', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', 25000.00, 25000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:02'),
+(82, 'JE-20261018-954D6CD4', '2026-10-17', 'REMITTANCE_WATERFALL', 'DIR-CR-5AB26D9F27', 'Statutory incentive dividend allocation authorized by Board', 10000.00, 10000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:02'),
+(83, 'JE-20261018-2690AC7B', '2026-10-17', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-7E4740D4', 'Loan disbursement for L-WMC-2026-7E4740D4', 50000.00, 50000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:02'),
+(84, 'JE-20261018-8018C9E3', '2026-10-17', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-679EA013', 'Loan disbursement for L-WMC-2026-679EA013', 60000.00, 60000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:02'),
+(85, 'JE-20261018-061B4FA8', '2026-10-17', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-AD838415', 'Loan disbursement for L-WMC-2026-AD838415', 50000.00, 50000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:02'),
+(86, 'JE-20261018-FD321FCD', '2026-10-17', 'REMITTANCE_WATERFALL', 'TXN-REG-2-1792257563117-BCC19A', 'Entrance / Registration Fee - Article 7 (Adv #WMC-ADV-202610-0002)', 5000.00, 5000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:02'),
+(87, 'JE-20261018-CD07332B', '2026-10-17', 'REMITTANCE_WATERFALL', 'TXN-SAV-2-1792257563117-BCC19A', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 20,000.00]', 20000.00, 20000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:02'),
+(88, 'JE-20261018-F9BB8AA9', '2026-10-17', 'REMITTANCE_WATERFALL', 'DIR-CR-8D86E6ECBC', 'Statutory incentive dividend allocation authorized by Board', 10000.00, 10000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:02'),
+(89, 'JE-20261018-2F5E8A2D', '2026-10-17', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-4D8EEC21', 'Loan disbursement for L-WMC-2026-4D8EEC21', 50000.00, 50000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:02'),
+(90, 'JE-20261018-5F80A90D', '2026-10-17', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-BD294F9F', 'Loan disbursement for L-WMC-2026-BD294F9F', 60000.00, 60000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:02'),
+(91, 'JE-20261018-20D0667F', '2026-10-17', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-AF0E02D6', 'Loan disbursement for L-WMC-2026-AF0E02D6', 50000.00, 50000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:02'),
+(92, 'JE-20261018-1868FF42', '2026-10-17', 'REMITTANCE_WATERFALL', 'TXN-SAV-2-1792259332264-76213E', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', 25000.00, 25000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:02'),
+(93, 'JE-20261018-18A41446', '2026-10-17', 'REMITTANCE_WATERFALL', 'DIR-CR-7A4DCB6E2A', 'Statutory incentive dividend allocation authorized by Board', 10000.00, 10000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:02'),
+(94, 'JE-20261018-A4E6E6D6', '2026-10-18', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-52DC9B5C', 'Loan disbursement for L-WMC-2026-52DC9B5C', 50000.00, 50000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:02'),
+(95, 'JE-20261018-0B6CD867', '2026-10-18', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-BA661222', 'Loan disbursement for L-WMC-2026-BA661222', 60000.00, 60000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:02'),
+(96, 'JE-20261018-2C5DED96', '2026-10-18', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-38376CF0', 'Loan disbursement for L-WMC-2026-38376CF0', 50000.00, 50000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:02'),
+(97, 'JE-20261018-73206906', '2026-10-18', 'REMITTANCE_WATERFALL', 'TXN-SAV-2-1792301056755-85EDED', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', 25000.00, 25000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:02'),
+(98, 'JE-20261018-CF148A8F', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIR-CR-E70BEF79F4', 'Statutory incentive dividend allocation authorized by Board', 10000.00, 10000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:02'),
+(99, 'JE-20261018-1EFF99DE', '2026-10-18', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-8AC49362', 'Loan disbursement for L-WMC-2026-8AC49362', 50000.00, 50000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:02'),
+(100, 'JE-20261018-5FB06B86', '2026-10-18', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-27B0D1DA', 'Loan disbursement for L-WMC-2026-27B0D1DA', 50000.00, 50000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:02')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.journal_entries (id, entry_number, entry_date, source_module, source_reference, narration, total_debit, total_credit, is_balanced, status, created_by, approved_by, approved_at, supporting_doc_url, created_at) VALUES
+(101, 'JE-20261018-B651B18B', '2026-10-18', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-F0C66457', 'Loan disbursement for L-WMC-2026-F0C66457', 50000.00, 50000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T06:55:02'),
+(102, 'JE-20261018-ED8DACEB', '2026-10-18', 'MANUAL_JOURNAL', 'TEST-BAL-1792303095', 'Balanced test journal entry', 25000.00, 25000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T06:58:15'),
+(103, 'JE-20261018-8C66B73D', '2026-10-18', 'MANUAL_JOURNAL', 'MAN-DRAFT-DBA37D', 'Monthly Cloud Database Hosting & Maintenance Invoice', 15000.00, 15000.00, TRUE, 'POSTED', 2, 1, '2026-10-18T06:58:15', 'https://wmc-storage/vouchers/inv-hosting-2026.pdf', '2026-10-18T06:58:15'),
+(104, 'JE-20261018-A65B2D29', '2026-10-18', 'DIVIDEND_DISTRIBUTION', 'DIV-PER-1', 'Statutory Dividend & Surplus Distribution (FY2026 Official Dividend Run)', 500000.00, 500000.00, TRUE, 'POSTED', 1, 1, '2026-10-18T06:58:16', NULL, '2026-10-18T06:58:15'),
+(105, 'JE-20261018-37BEB770', '2026-10-18', 'EXIT_SETTLEMENT', 'EXIT-TEST-SETTLE-001', 'Statutory exit liquidation for WMC-TEST-999 (VOLUNTARY_WITHDRAWAL)', 175000.00, 175000.00, TRUE, 'POSTED', 1, 1, '2026-10-18T06:58:27', NULL, '2026-10-18T06:58:27'),
+(106, 'JE-20261018-1DBED156', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-1-1-1792303095744', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 87070.87, 87070.87, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T07:14:41'),
+(107, 'JE-20261018-B4E9AA8A', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-1-2-1792303095744', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 73643.41, 73643.41, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T07:14:41'),
+(108, 'JE-20261018-A804B8ED', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-1-3-1792303095744', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 14880.95, 14880.95, TRUE, 'POSTED', 3, NULL, NULL, NULL, '2026-10-18T07:14:41'),
+(109, 'JE-20261018-F46D8846', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-1-4-1792303095744', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 14880.95, 14880.95, TRUE, 'POSTED', 4, NULL, NULL, NULL, '2026-10-18T07:14:41'),
+(110, 'JE-20261018-F5CA47C6', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-1-5-1792303095744', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 14880.95, 14880.95, TRUE, 'POSTED', 5, NULL, NULL, NULL, '2026-10-18T07:14:41'),
+(111, 'JE-20261018-C7F671F2', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-1-6-1792303095744', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 14880.95, 14880.95, TRUE, 'POSTED', 6, NULL, NULL, NULL, '2026-10-18T07:14:41'),
+(112, 'JE-20261018-E3A16916', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-1-7-1792303095744', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 14880.95, 14880.95, TRUE, 'POSTED', 7, NULL, NULL, NULL, '2026-10-18T07:14:41'),
+(113, 'JE-20261018-3528DD42', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-1-8-1792303095744', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 14880.95, 14880.95, TRUE, 'POSTED', 8, NULL, NULL, NULL, '2026-10-18T07:14:41'),
+(114, 'JE-20261018-6E1EF135', '2026-10-18', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-73031A15', 'Loan disbursement for L-WMC-2026-73031A15', 50000.00, 50000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T07:14:41'),
+(115, 'JE-20261018-15E26E2C', '2026-10-18', 'MANUAL_JOURNAL', 'TEST-BAL-1792304081', 'Balanced test journal entry', 25000.00, 25000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T07:14:41'),
+(116, 'JE-20261018-FD0532E8', '2026-10-18', 'MANUAL_JOURNAL', 'MAN-DRAFT-80E3D9', 'Monthly Cloud Database Hosting & Maintenance Invoice', 15000.00, 15000.00, TRUE, 'POSTED', 2, 1, '2026-10-18T07:14:42', 'https://wmc-storage/vouchers/inv-hosting-2026.pdf', '2026-10-18T07:14:42'),
+(117, 'JE-20261018-1D812846', '2026-10-18', 'DIVIDEND_DISTRIBUTION', 'DIV-PER-2', 'Statutory Dividend & Surplus Distribution (FY2026 Official Dividend Run)', 500000.00, 500000.00, TRUE, 'POSTED', 1, 1, '2026-10-18T07:14:42', NULL, '2026-10-18T07:14:42'),
+(118, 'JE-20261018-F30A69A1', '2026-10-18', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-BF61E7B5', 'Loan Facility Disbursement for L-WMC-2026-BF61E7B5', 60000.00, 60000.00, TRUE, 'POSTED', 1, 1, '2026-10-18T07:15:26', NULL, '2026-10-18T07:15:25'),
+(119, 'JE-20261018-6D5B1F1E', '2026-10-18', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-378B202E', 'Loan Facility Disbursement for L-WMC-2026-378B202E', 50000.00, 50000.00, TRUE, 'POSTED', 1, 1, '2026-10-18T07:15:26', NULL, '2026-10-18T07:15:25'),
+(120, 'JE-20261018-92BB6C24', '2026-10-18', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-661009D9', 'Loan Facility Disbursement for L-WMC-2026-661009D9', 60000.00, 60000.00, TRUE, 'POSTED', 1, 1, '2026-10-18T07:20:15', NULL, '2026-10-18T07:20:14'),
+(121, 'JE-20261018-D318AC53', '2026-10-18', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-D682DCB3', 'Loan Facility Disbursement for L-WMC-2026-D682DCB3', 50000.00, 50000.00, TRUE, 'POSTED', 1, 1, '2026-10-18T07:20:15', NULL, '2026-10-18T07:20:14'),
+(122, 'JE-20261018-A7463F5B', '2026-10-18', 'REMITTANCE_WATERFALL', 'POLARIS-DEP-1792304414', 'Automated Remittance Waterfall for WMC-2026-002 (Adv #WMC-ADV-202610-0002)', 25000.00, 25000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T07:20:14'),
+(123, 'JE-20261018-410FE83F', '2026-10-18', 'REMITTANCE_WATERFALL', 'TEST-TXN-REG-001', 'Automated Remittance Waterfall for WMC-TEST-REG99 (Adv #WMC-ADV-202610-10004)', 6000.00, 6000.00, TRUE, 'POSTED', 10004, NULL, NULL, NULL, '2026-10-18T07:20:36'),
+(124, 'JE-20261018-F2E51C51', '2026-10-18', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-143C4A29', 'Loan Facility Disbursement for L-WMC-2026-143C4A29', 50000.00, 50000.00, TRUE, 'POSTED', 1, 1, '2026-10-18T07:20:42', NULL, '2026-10-18T07:20:41'),
+(125, 'JE-20261018-139ECCCD', '2026-10-18', 'EXIT_SETTLEMENT', 'EXIT-TEST-SETTLE-001', 'Statutory exit liquidation for WMC-TEST-999 (VOLUNTARY_WITHDRAWAL)', 175000.00, 175000.00, TRUE, 'POSTED', 1, 1, '2026-10-18T07:20:54', NULL, '2026-10-18T07:20:53'),
+(126, 'JE-20261018-45ECB6C0', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-2-1-1792304082273', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 76491.43, 76491.43, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T07:21:00'),
+(127, 'JE-20261018-03C6AF9D', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-2-2-1792304082273', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 73752.44, 73752.44, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T07:21:00'),
+(128, 'JE-20261018-2B27BC3C', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-2-3-1792304082273', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 16626.02, 16626.02, TRUE, 'POSTED', 3, NULL, NULL, NULL, '2026-10-18T07:21:00'),
+(129, 'JE-20261018-31BC2446', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-2-4-1792304082273', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 16626.02, 16626.02, TRUE, 'POSTED', 4, NULL, NULL, NULL, '2026-10-18T07:21:00'),
+(130, 'JE-20261018-FB116D57', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-2-5-1792304082273', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 16626.02, 16626.02, TRUE, 'POSTED', 5, NULL, NULL, NULL, '2026-10-18T07:21:00'),
+(131, 'JE-20261018-A5385605', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-2-6-1792304082273', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 16626.02, 16626.02, TRUE, 'POSTED', 6, NULL, NULL, NULL, '2026-10-18T07:21:00'),
+(132, 'JE-20261018-978496C9', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-2-7-1792304082273', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 16626.02, 16626.02, TRUE, 'POSTED', 7, NULL, NULL, NULL, '2026-10-18T07:21:00'),
+(133, 'JE-20261018-95ED997F', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-2-8-1792304082273', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 16626.02, 16626.02, TRUE, 'POSTED', 8, NULL, NULL, NULL, '2026-10-18T07:21:00'),
+(134, 'JE-20261018-1CA770DF', '2026-10-18', 'REMITTANCE_WATERFALL', 'TXN-SAV-2-1792304125998-F39FAC', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', 25000.00, 25000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T07:21:00'),
+(135, 'JE-20261018-D3DA37A4', '2026-10-18', 'REMITTANCE_WATERFALL', 'TXN-SAV-2-1792304414956-05E70F', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', 25000.00, 25000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T07:21:00'),
+(136, 'JE-20261018-2ECF2DE2', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIR-CR-CADB89F5EC', 'Statutory incentive dividend allocation authorized by Board', 10000.00, 10000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T07:21:00'),
+(137, 'JE-20261018-683412F7', '2026-10-18', 'MANUAL_JOURNAL', 'TEST-BAL-1792304460', 'Balanced test journal entry', 25000.00, 25000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T07:21:00'),
+(138, 'JE-20261018-2DF56437', '2026-10-18', 'MANUAL_JOURNAL', 'MAN-DRAFT-732304', 'Monthly Cloud Database Hosting & Maintenance Invoice', 15000.00, 15000.00, TRUE, 'POSTED', 2, 1, '2026-10-18T07:21:00', 'https://wmc-storage/vouchers/inv-hosting-2026.pdf', '2026-10-18T07:21:00'),
+(139, 'JE-20261018-1386E870', '2026-10-18', 'DIVIDEND_DISTRIBUTION', 'DIV-PER-3', 'Statutory Dividend & Surplus Distribution (FY2026 Official Dividend Run)', 500000.00, 500000.00, TRUE, 'POSTED', 1, 1, '2026-10-18T07:21:01', NULL, '2026-10-18T07:21:00'),
+(140, 'JE-20261018-4B3A3D18', '2026-10-18', 'LOAN_FORECLOSURE', 'L-WMC-2026-553AB4D4', 'Statutory 90-Day Foreclosure Offset on Loan L-WMC-2026-553AB4D4 (Olaleke Olaoye)', 50000.00, 50000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T07:56:34'),
+(141, 'JE-20261018-35325271', '2026-10-18', 'LOAN_FORECLOSURE', 'L-WMC-2026-553AB4D4', 'Statutory 90-Day Foreclosure Offset on Loan L-WMC-2026-553AB4D4 (Olaleke Olaoye)', 50000.00, 50000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T07:56:55'),
+(142, 'JE-20261018-38314E65', '2026-10-18', 'LOAN_FORECLOSURE', 'L-WMC-2026-553AB4D4', 'Statutory 90-Day Foreclosure Offset on Loan L-WMC-2026-553AB4D4 (Olaleke Olaoye)', 50000.00, 50000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T07:57:46'),
+(143, 'JE-20261018-31544F15', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-3-1-1792304460644', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 65954.87, 65954.87, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T07:58:02'),
+(144, 'JE-20261018-E0FDB401', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-3-2-1792304460644', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 76574.45, 76574.45, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T07:58:02'),
+(145, 'JE-20261018-0C381D29', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-3-3-1792304460644', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 17911.78, 17911.78, TRUE, 'POSTED', 3, NULL, NULL, NULL, '2026-10-18T07:58:02'),
+(146, 'JE-20261018-7545C80B', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-3-4-1792304460644', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 17911.78, 17911.78, TRUE, 'POSTED', 4, NULL, NULL, NULL, '2026-10-18T07:58:02'),
+(147, 'JE-20261018-9EB8053B', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-3-5-1792304460644', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 17911.78, 17911.78, TRUE, 'POSTED', 5, NULL, NULL, NULL, '2026-10-18T07:58:02'),
+(148, 'JE-20261018-9A72A1E5', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-3-6-1792304460644', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 17911.78, 17911.78, TRUE, 'POSTED', 6, NULL, NULL, NULL, '2026-10-18T07:58:02'),
+(149, 'JE-20261018-4FEC90F2', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-3-7-1792304460644', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 17911.78, 17911.78, TRUE, 'POSTED', 7, NULL, NULL, NULL, '2026-10-18T07:58:02'),
+(150, 'JE-20261018-4E145FE6', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-3-8-1792304460644', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 17911.78, 17911.78, TRUE, 'POSTED', 8, NULL, NULL, NULL, '2026-10-18T07:58:02')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.journal_entries (id, entry_number, entry_date, source_module, source_reference, narration, total_debit, total_credit, is_balanced, status, created_by, approved_by, approved_at, supporting_doc_url, created_at) VALUES
+(151, 'JE-20261018-598766AE', '2026-10-18', 'REMITTANCE_WATERFALL', 'TXN-FCL-B-76-1792306391', 'Foreclosure offset against defaulted loan L-WMC-2026-553AB4D4', 30000.00, 30000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T07:58:02'),
+(152, 'JE-20261018-C5755496', '2026-10-18', 'REMITTANCE_WATERFALL', 'TXN-FCL-B-76-1792306535', 'Foreclosure offset against defaulted loan L-WMC-2026-553AB4D4', 30000.00, 30000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T07:58:02'),
+(153, 'JE-20261018-BFCFEAF3', '2026-10-18', 'REMITTANCE_WATERFALL', 'TXN-FCL-G-76-1-1792306535', 'Guarantor collateral foreclosure offset for Olaleke Olaoye (L-WMC-2026-553AB4D4)', 20000.00, 20000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T07:58:02'),
+(154, 'JE-20261018-4251E6AC', '2026-10-18', 'REMITTANCE_WATERFALL', 'TXN-FCL-B-76-1792306594', 'Foreclosure offset against defaulted loan L-WMC-2026-553AB4D4', 30000.00, 30000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T07:58:02'),
+(155, 'JE-20261018-58091D39', '2026-10-18', 'REMITTANCE_WATERFALL', 'TXN-FCL-G-76-1-1792306594', 'Guarantor collateral foreclosure offset for Olaleke Olaoye (L-WMC-2026-553AB4D4)', 20000.00, 20000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T07:58:02'),
+(156, 'JE-20261018-481F0202', '2026-10-18', 'REMITTANCE_WATERFALL', 'TXN-FCL-B-76-1792306615', 'Foreclosure offset against defaulted loan L-WMC-2026-553AB4D4', 30000.00, 30000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T07:58:02'),
+(157, 'JE-20261018-B2C8DA96', '2026-10-18', 'REMITTANCE_WATERFALL', 'TXN-FCL-G-76-1-1792306615', 'Guarantor collateral foreclosure offset for Olaleke Olaoye (L-WMC-2026-553AB4D4)', 20000.00, 20000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T07:58:02'),
+(158, 'JE-20261018-C2A965B4', '2026-10-18', 'REMITTANCE_WATERFALL', 'TXN-FCL-B-76-1792306666', 'Foreclosure offset against defaulted loan L-WMC-2026-553AB4D4', 30000.00, 30000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T07:58:02'),
+(159, 'JE-20261018-46572018', '2026-10-18', 'REMITTANCE_WATERFALL', 'TXN-FCL-G-76-1-1792306666', 'Guarantor collateral foreclosure offset for Olaleke Olaoye (L-WMC-2026-553AB4D4)', 20000.00, 20000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T07:58:02'),
+(160, 'JE-20261018-826C18E3', '2026-10-18', 'MANUAL_JOURNAL', 'TEST-BAL-1792306682', 'Balanced test journal entry', 25000.00, 25000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T07:58:02'),
+(161, 'JE-20261018-342607DE', '2026-10-18', 'MANUAL_JOURNAL', 'MAN-DRAFT-4486F0', 'Monthly Cloud Database Hosting & Maintenance Invoice', 15000.00, 15000.00, TRUE, 'POSTED', 2, 1, '2026-10-18T07:58:03', 'https://wmc-storage/vouchers/inv-hosting-2026.pdf', '2026-10-18T07:58:03'),
+(162, 'JE-20261018-EDFD6DE7', '2026-10-18', 'DIVIDEND_DISTRIBUTION', 'DIV-PER-4', 'Statutory Dividend & Surplus Distribution (FY2026 Official Dividend Run)', 500000.00, 500000.00, TRUE, 'POSTED', 1, 1, '2026-10-18T07:58:04', NULL, '2026-10-18T07:58:03'),
+(163, 'JE-20261018-ED57DF7E', '2026-10-18', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-1788CB66', 'Loan Facility Disbursement for L-WMC-2026-1788CB66', 60000.00, 60000.00, TRUE, 'POSTED', 1, 1, '2026-10-18T07:58:18', NULL, '2026-10-18T07:58:18'),
+(164, 'JE-20261018-4308D152', '2026-10-18', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-5ECA7E1D', 'Loan Facility Disbursement for L-WMC-2026-5ECA7E1D', 50000.00, 50000.00, TRUE, 'POSTED', 1, 1, '2026-10-18T07:58:18', NULL, '2026-10-18T07:58:18'),
+(165, 'JE-20261018-E0172F07', '2026-10-18', 'REMITTANCE_WATERFALL', 'POLARIS-DEP-1792306698', 'Automated Remittance Waterfall for WMC-2026-002 (Adv #WMC-ADV-202610-0002)', 25000.00, 25000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T07:58:18'),
+(166, 'JE-20261018-5C49B48E', '2026-10-18', 'REMITTANCE_WATERFALL', 'TEST-TXN-REG-001', 'Automated Remittance Waterfall for WMC-TEST-REG99 (Adv #WMC-ADV-202610-10011)', 6000.00, 6000.00, TRUE, 'POSTED', 10011, NULL, NULL, NULL, '2026-10-18T07:59:24'),
+(167, 'JE-20261018-95127F91', '2026-10-18', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-8D5FD046', 'Loan Facility Disbursement for L-WMC-2026-8D5FD046', 50000.00, 50000.00, TRUE, 'POSTED', 1, 1, '2026-10-18T07:59:34', NULL, '2026-10-18T07:59:33'),
+(168, 'JE-20261018-EF301D91', '2026-10-18', 'EXIT_SETTLEMENT', 'EXIT-TEST-SETTLE-001', 'Statutory exit liquidation for WMC-TEST-999 (VOLUNTARY_WITHDRAWAL)', 175000.00, 175000.00, TRUE, 'POSTED', 1, 1, '2026-10-18T07:59:46', NULL, '2026-10-18T07:59:46'),
+(169, 'JE-20261018-1CC44F1A', '2026-10-18', 'LOAN_FORECLOSURE', 'L-WMC-2026-9CDA5F1F', 'Statutory 90-Day Foreclosure Offset on Loan L-WMC-2026-9CDA5F1F (Olaleke Olaoye)', 50000.00, 50000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T07:59:57'),
+(170, 'JE-20261018-C60FCB94', '2026-10-18', 'LOAN_FORECLOSURE', 'L-WMC-2026-9CDA5F1F', 'Statutory 90-Day Foreclosure Offset on Loan L-WMC-2026-9CDA5F1F (Olaleke Olaoye)', 50000.00, 50000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T08:00:18'),
+(171, 'JE-20261018-5AC5B98D', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-4-1-1792306683433', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 63895.21, 63895.21, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T08:00:29'),
+(172, 'JE-20261018-A22A8E2A', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-4-2-1792306683433', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 68728.27, 68728.27, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T08:00:29'),
+(173, 'JE-20261018-36DEA064', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-4-3-1792306683433', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 19562.75, 19562.75, TRUE, 'POSTED', 3, NULL, NULL, NULL, '2026-10-18T08:00:29'),
+(174, 'JE-20261018-265ADAC7', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-4-4-1792306683433', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 19562.75, 19562.75, TRUE, 'POSTED', 4, NULL, NULL, NULL, '2026-10-18T08:00:29'),
+(175, 'JE-20261018-0D3C4C6D', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-4-5-1792306683433', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 19562.75, 19562.75, TRUE, 'POSTED', 5, NULL, NULL, NULL, '2026-10-18T08:00:29'),
+(176, 'JE-20261018-2BD6A90F', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-4-6-1792306683433', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 19562.75, 19562.75, TRUE, 'POSTED', 6, NULL, NULL, NULL, '2026-10-18T08:00:29'),
+(177, 'JE-20261018-108449A1', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-4-7-1792306683433', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 19562.75, 19562.75, TRUE, 'POSTED', 7, NULL, NULL, NULL, '2026-10-18T08:00:29'),
+(178, 'JE-20261018-1A7988B1', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-4-8-1792306683433', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 19562.75, 19562.75, TRUE, 'POSTED', 8, NULL, NULL, NULL, '2026-10-18T08:00:29'),
+(179, 'JE-20261018-16754481', '2026-10-18', 'REMITTANCE_WATERFALL', 'TXN-SAV-2-1792306698866-544283', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', 25000.00, 25000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T08:00:29'),
+(180, 'JE-20261018-7DF50698', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIR-CR-F7D394137F', 'Statutory incentive dividend allocation authorized by Board', 10000.00, 10000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T08:00:29'),
+(181, 'JE-20261018-CC070AF1', '2026-10-18', 'REMITTANCE_WATERFALL', 'TXN-FCL-B-82-1792306796', 'Foreclosure offset against defaulted loan L-WMC-2026-9CDA5F1F', 30000.00, 30000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T08:00:29'),
+(182, 'JE-20261018-CC92B07C', '2026-10-18', 'REMITTANCE_WATERFALL', 'TXN-FCL-G-82-1-1792306797', 'Guarantor collateral foreclosure offset for Olaleke Olaoye (L-WMC-2026-9CDA5F1F)', 20000.00, 20000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T08:00:29'),
+(183, 'JE-20261018-9A393F07', '2026-10-18', 'REMITTANCE_WATERFALL', 'TXN-FCL-B-82-1792306818', 'Foreclosure offset against defaulted loan L-WMC-2026-9CDA5F1F', 30000.00, 30000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T08:00:29'),
+(184, 'JE-20261018-2BF5100D', '2026-10-18', 'REMITTANCE_WATERFALL', 'TXN-FCL-G-82-1-1792306818', 'Guarantor collateral foreclosure offset for Olaleke Olaoye (L-WMC-2026-9CDA5F1F)', 20000.00, 20000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T08:00:29'),
+(185, 'JE-20261018-E6E60085', '2026-10-18', 'MANUAL_JOURNAL', 'TEST-BAL-1792306829', 'Balanced test journal entry', 25000.00, 25000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T08:00:29'),
+(186, 'JE-20261018-D9619FA8', '2026-10-18', 'MANUAL_JOURNAL', 'MAN-DRAFT-89739A', 'Monthly Cloud Database Hosting & Maintenance Invoice', 15000.00, 15000.00, TRUE, 'POSTED', 2, 1, '2026-10-18T08:00:29', 'https://wmc-storage/vouchers/inv-hosting-2026.pdf', '2026-10-18T08:00:29'),
+(187, 'JE-20261018-8B9F101F', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-5-1-1792306829992', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 57387.25, 57387.25, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T08:00:42'),
+(188, 'JE-20261018-90CFCE08', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-5-2-1792306829992', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 67759.48, 67759.48, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T08:00:42'),
+(189, 'JE-20261018-7E13400A', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-5-3-1792306829992', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 20808.88, 20808.88, TRUE, 'POSTED', 3, NULL, NULL, NULL, '2026-10-18T08:00:42'),
+(190, 'JE-20261018-4AEB5FF9', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-5-4-1792306829992', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 20808.88, 20808.88, TRUE, 'POSTED', 4, NULL, NULL, NULL, '2026-10-18T08:00:42'),
+(191, 'JE-20261018-EE3BDB25', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-5-5-1792306829992', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 20808.88, 20808.88, TRUE, 'POSTED', 5, NULL, NULL, NULL, '2026-10-18T08:00:42'),
+(192, 'JE-20261018-F1CB7BC7', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-5-6-1792306829992', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 20808.88, 20808.88, TRUE, 'POSTED', 6, NULL, NULL, NULL, '2026-10-18T08:00:42'),
+(193, 'JE-20261018-CDDC674E', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-5-7-1792306829992', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 20808.88, 20808.88, TRUE, 'POSTED', 7, NULL, NULL, NULL, '2026-10-18T08:00:42'),
+(194, 'JE-20261018-2AE64458', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-5-8-1792306829992', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 20808.88, 20808.88, TRUE, 'POSTED', 8, NULL, NULL, NULL, '2026-10-18T08:00:42'),
+(195, 'JE-20261018-D83AC82A', '2026-10-18', 'MANUAL_JOURNAL', 'TEST-BAL-1792306842', 'Balanced test journal entry', 25000.00, 25000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T08:00:42'),
+(196, 'JE-20261018-BF8A11EF', '2026-10-18', 'MANUAL_JOURNAL', 'MAN-DRAFT-14C7B2', 'Monthly Cloud Database Hosting & Maintenance Invoice', 15000.00, 15000.00, TRUE, 'POSTED', 2, 1, '2026-10-18T08:00:42', 'https://wmc-storage/vouchers/inv-hosting-2026.pdf', '2026-10-18T08:00:42'),
+(197, 'JE-20261018-E8C79457', '2026-10-18', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-411C590A', 'Loan Facility Disbursement for L-WMC-2026-411C590A', 60000.00, 60000.00, TRUE, 'POSTED', 1, 1, '2026-10-18T08:00:45', NULL, '2026-10-18T08:00:44'),
+(198, 'JE-20261018-E7039D5C', '2026-10-18', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-42F4BAA4', 'Loan Facility Disbursement for L-WMC-2026-42F4BAA4', 50000.00, 50000.00, TRUE, 'POSTED', 1, 1, '2026-10-18T08:00:45', NULL, '2026-10-18T08:00:44'),
+(199, 'JE-20261018-109A578F', '2026-10-18', 'REMITTANCE_WATERFALL', 'POLARIS-DEP-1792306845', 'Automated Remittance Waterfall for WMC-2026-002 (Adv #WMC-ADV-202610-0002)', 25000.00, 25000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T08:00:45'),
+(200, 'JE-20261018-EEF4ECE7', '2026-10-18', 'REMITTANCE_WATERFALL', 'TEST-TXN-REG-001', 'Automated Remittance Waterfall for WMC-TEST-REG99 (Adv #WMC-ADV-202610-10014)', 6000.00, 6000.00, TRUE, 'POSTED', 10014, NULL, NULL, NULL, '2026-10-18T08:00:47')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.journal_entries (id, entry_number, entry_date, source_module, source_reference, narration, total_debit, total_credit, is_balanced, status, created_by, approved_by, approved_at, supporting_doc_url, created_at) VALUES
+(201, 'JE-20261018-8F38D6BE', '2026-10-18', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-D1496574', 'Loan Facility Disbursement for L-WMC-2026-D1496574', 50000.00, 50000.00, TRUE, 'POSTED', 1, 1, '2026-10-18T08:00:50', NULL, '2026-10-18T08:00:49'),
+(202, 'JE-20261018-51D2C807', '2026-10-18', 'EXIT_SETTLEMENT', 'EXIT-TEST-SETTLE-001', 'Statutory exit liquidation for WMC-TEST-999 (VOLUNTARY_WITHDRAWAL)', 175000.00, 175000.00, TRUE, 'POSTED', 1, 1, '2026-10-18T08:00:55', NULL, '2026-10-18T08:00:55'),
+(203, 'JE-20261018-2888113E', '2026-10-18', 'LOAN_FORECLOSURE', 'L-WMC-2026-3EB551D4', 'Statutory 90-Day Foreclosure Offset on Loan L-WMC-2026-3EB551D4 (Olaleke Olaoye)', 50000.00, 50000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T08:00:58'),
+(204, 'JE-20261018-C6705CD2', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-6-1-1792306842630', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 55797.93, 55797.93, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T08:02:10'),
+(205, 'JE-20261018-6E569DF7', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-6-2-1792306842630', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 65409.56, 65409.56, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T08:02:10'),
+(206, 'JE-20261018-852A12EA', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-6-3-1792306842630', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 21465.42, 21465.42, TRUE, 'POSTED', 3, NULL, NULL, NULL, '2026-10-18T08:02:10'),
+(207, 'JE-20261018-FBF85A17', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-6-4-1792306842630', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 21465.42, 21465.42, TRUE, 'POSTED', 4, NULL, NULL, NULL, '2026-10-18T08:02:10'),
+(208, 'JE-20261018-15ABB48B', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-6-5-1792306842630', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 21465.42, 21465.42, TRUE, 'POSTED', 5, NULL, NULL, NULL, '2026-10-18T08:02:10'),
+(209, 'JE-20261018-169E5994', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-6-6-1792306842630', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 21465.42, 21465.42, TRUE, 'POSTED', 6, NULL, NULL, NULL, '2026-10-18T08:02:10'),
+(210, 'JE-20261018-AEAF52E5', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-6-7-1792306842630', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 21465.42, 21465.42, TRUE, 'POSTED', 7, NULL, NULL, NULL, '2026-10-18T08:02:10'),
+(211, 'JE-20261018-72F36876', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-6-8-1792306842630', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 21465.42, 21465.42, TRUE, 'POSTED', 8, NULL, NULL, NULL, '2026-10-18T08:02:10'),
+(212, 'JE-20261018-89B45D49', '2026-10-18', 'REMITTANCE_WATERFALL', 'TXN-SAV-2-1792306845554-DFF2FB', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', 25000.00, 25000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T08:02:10'),
+(213, 'JE-20261018-FBFAED64', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIR-CR-F66BD14DC0', 'Statutory incentive dividend allocation authorized by Board', 10000.00, 10000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T08:02:10'),
+(214, 'JE-20261018-9E0721A1', '2026-10-18', 'REMITTANCE_WATERFALL', 'TXN-FCL-B-88-1792306858', 'Foreclosure offset against defaulted loan L-WMC-2026-3EB551D4', 30000.00, 30000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T08:02:10'),
+(215, 'JE-20261018-1F4DE7AB', '2026-10-18', 'REMITTANCE_WATERFALL', 'TXN-FCL-G-88-1-1792306858', 'Guarantor collateral foreclosure offset for Olaleke Olaoye (L-WMC-2026-3EB551D4)', 20000.00, 20000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T08:02:10'),
+(216, 'JE-20261018-84CB1BAA', '2026-10-18', 'MANUAL_JOURNAL', 'TEST-BAL-1792306930', 'Balanced test journal entry', 25000.00, 25000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T08:02:10'),
+(217, 'JE-20261018-D38330CD', '2026-10-18', 'MANUAL_JOURNAL', 'MAN-DRAFT-A4CDCE', 'Monthly Cloud Database Hosting & Maintenance Invoice', 15000.00, 15000.00, TRUE, 'POSTED', 2, 1, '2026-10-18T08:02:11', 'https://wmc-storage/vouchers/inv-hosting-2026.pdf', '2026-10-18T08:02:10'),
+(218, 'JE-20261018-44744290', '2026-10-18', 'DIVIDEND_DISTRIBUTION', 'DIV-PER-7', 'Statutory Dividend & Surplus Distribution (FY2026 Official Dividend Run)', 499999.98, 499999.98, TRUE, 'POSTED', 1, 1, '2026-10-18T08:02:11', NULL, '2026-10-18T08:02:11'),
+(219, 'JE-20261018-078FE9C9', '2026-10-18', 'LOAN_FORECLOSURE', 'L-WMC-2026-3EB551D4', 'Statutory 90-Day Foreclosure Offset on Loan L-WMC-2026-3EB551D4 (Olaleke Olaoye)', 50000.00, 50000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T08:02:18'),
+(220, 'JE-20261018-76C57329', '2026-10-18', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-B2B13EB5', 'Loan Facility Disbursement for L-WMC-2026-B2B13EB5', 60000.00, 60000.00, TRUE, 'POSTED', 1, 1, '2026-10-18T08:02:26', NULL, '2026-10-18T08:02:25'),
+(221, 'JE-20261018-3049A059', '2026-10-18', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-0A354FC6', 'Loan Facility Disbursement for L-WMC-2026-0A354FC6', 50000.00, 50000.00, TRUE, 'POSTED', 1, 1, '2026-10-18T08:02:26', NULL, '2026-10-18T08:02:26'),
+(222, 'JE-20261018-7B6CA844', '2026-10-18', 'REMITTANCE_WATERFALL', 'POLARIS-DEP-1792306946', 'Automated Remittance Waterfall for WMC-2026-002 (Adv #WMC-ADV-202610-0002)', 25000.00, 25000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T08:02:26'),
+(223, 'JE-20261018-C290FFD5', '2026-10-18', 'REMITTANCE_WATERFALL', 'TEST-TXN-REG-001', 'Automated Remittance Waterfall for WMC-TEST-REG99 (Adv #WMC-ADV-202610-10018)', 6000.00, 6000.00, TRUE, 'POSTED', 10018, NULL, NULL, NULL, '2026-10-18T08:02:31'),
+(224, 'JE-20261018-34749158', '2026-10-18', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-ED18C66A', 'Loan Facility Disbursement for L-WMC-2026-ED18C66A', 50000.00, 50000.00, TRUE, 'POSTED', 1, 1, '2026-10-18T08:02:36', NULL, '2026-10-18T08:02:35'),
+(225, 'JE-20261018-D4D3D3AC', '2026-10-18', 'EXIT_SETTLEMENT', 'EXIT-TEST-SETTLE-001', 'Statutory exit liquidation for WMC-TEST-999 (VOLUNTARY_WITHDRAWAL)', 175000.00, 175000.00, TRUE, 'POSTED', 1, 1, '2026-10-18T08:02:45', NULL, '2026-10-18T08:02:44'),
+(226, 'JE-20261018-8E730BD0', '2026-10-18', 'LOAN_FORECLOSURE', 'L-WMC-2026-3EB551D4', 'Statutory 90-Day Foreclosure Offset on Loan L-WMC-2026-3EB551D4 (Olaleke Olaoye)', 30000.00, 30000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T08:15:01'),
+(227, 'JE-20261018-599E57B0', '2026-10-18', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-5DC53AFD', 'Loan Facility Disbursement for L-WMC-2026-5DC53AFD', 50000.00, 50000.00, TRUE, 'POSTED', 1, 1, '2026-10-18T08:15:30', NULL, '2026-10-18T08:15:29'),
+(228, 'JE-20261018-CA010852', '2026-10-18', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-5C03FBF6', 'Loan Facility Disbursement for L-WMC-2026-5C03FBF6', 35000.00, 35000.00, TRUE, 'POSTED', 1, 1, '2026-10-18T08:15:35', NULL, '2026-10-18T08:15:35'),
+(229, 'JE-20261018-7758C366', '2026-10-18', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-4708585A', 'Loan Facility Disbursement for L-WMC-2026-4708585A', 60000.00, 60000.00, TRUE, 'POSTED', 1, 1, '2026-10-18T08:26:16', NULL, '2026-10-18T08:26:15'),
+(230, 'JE-20261018-DE4CA152', '2026-10-18', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-6F0F1438', 'Loan Facility Disbursement for L-WMC-2026-6F0F1438', 50000.00, 50000.00, TRUE, 'POSTED', 1, 1, '2026-10-18T08:26:16', NULL, '2026-10-18T08:26:16'),
+(231, 'JE-20261018-1A0C6319', '2026-10-18', 'REMITTANCE_WATERFALL', 'POLARIS-DEP-1792308376', 'Automated Remittance Waterfall for WMC-2026-002 (Adv #WMC-ADV-202610-0002)', 25000.00, 25000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T08:26:16'),
+(232, 'JE-20261018-1A496815', '2026-10-18', 'LOAN_FORECLOSURE', 'L-WMC-2026-14744738', 'Statutory 90-Day Foreclosure Offset on Loan L-WMC-2026-14744738 (Olaleke Olaoye)', 50000.00, 50000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T08:26:48'),
+(233, 'JE-20261018-C9B7C083', '2026-10-18', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-4FE7FD7F', 'Loan Facility Disbursement for L-WMC-2026-4FE7FD7F', 60000.00, 60000.00, TRUE, 'POSTED', 1, 1, '2026-10-18T08:57:01', NULL, '2026-10-18T08:57:00'),
+(234, 'JE-20261018-B2A9896E', '2026-10-18', 'LOAN_DISBURSEMENT', 'DISB-L-WMC-2026-A08C388B', 'Loan Facility Disbursement for L-WMC-2026-A08C388B', 50000.00, 50000.00, TRUE, 'POSTED', 1, 1, '2026-10-18T08:57:01', NULL, '2026-10-18T08:57:01'),
+(235, 'JE-20261018-07DCE262', '2026-10-18', 'REMITTANCE_WATERFALL', 'POLARIS-DEP-1792310221', 'Automated Remittance Waterfall for WMC-2026-002 (Adv #WMC-ADV-202610-0002)', 25000.00, 25000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-18T08:57:01'),
+(236, 'JE-20261018-9B82BFE0', '2026-10-18', 'LOAN_FORECLOSURE', 'L-WMC-2026-A30ED407', 'Statutory 90-Day Foreclosure Offset on Loan L-WMC-2026-A30ED407 (Olaleke Olaoye)', 50000.00, 50000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-18T08:57:12'),
+(237, 'JE-20261025-8D78FCAA', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-7-1-1792306931222', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 50004.55, 50004.55, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-25T14:45:09'),
+(238, 'JE-20261025-C4AA93B8', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-7-2-1792306931222', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 66002.41, 66002.41, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-25T14:45:09'),
+(239, 'JE-20261025-7BA34378', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-7-3-1792306931222', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 22332.17, 22332.17, TRUE, 'POSTED', 3, NULL, NULL, NULL, '2026-10-25T14:45:09'),
+(240, 'JE-20261025-F9656C61', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-7-4-1792306931222', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 22332.17, 22332.17, TRUE, 'POSTED', 4, NULL, NULL, NULL, '2026-10-25T14:45:09'),
+(241, 'JE-20261025-5BBC25F1', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-7-5-1792306931222', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 22332.17, 22332.17, TRUE, 'POSTED', 5, NULL, NULL, NULL, '2026-10-25T14:45:09'),
+(242, 'JE-20261025-8E2D7972', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-7-6-1792306931222', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 22332.17, 22332.17, TRUE, 'POSTED', 6, NULL, NULL, NULL, '2026-10-25T14:45:09'),
+(243, 'JE-20261025-ED2506A7', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-7-7-1792306931222', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 22332.17, 22332.17, TRUE, 'POSTED', 7, NULL, NULL, NULL, '2026-10-25T14:45:09'),
+(244, 'JE-20261025-DB9D4A29', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIV-7-8-1792306931222', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 22332.17, 22332.17, TRUE, 'POSTED', 8, NULL, NULL, NULL, '2026-10-25T14:45:09'),
+(245, 'JE-20261025-C401FC3A', '2026-10-18', 'REMITTANCE_WATERFALL', 'TXN-FCL-B-88-1792306938', 'Foreclosure offset against defaulted loan L-WMC-2026-3EB551D4', 30000.00, 30000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-25T14:45:09'),
+(246, 'JE-20261025-2D7D06F4', '2026-10-18', 'REMITTANCE_WATERFALL', 'TXN-FCL-G-88-1-1792306938', 'Guarantor collateral foreclosure offset for Olaleke Olaoye (L-WMC-2026-3EB551D4)', 20000.00, 20000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-25T14:45:10'),
+(247, 'JE-20261025-89899A43', '2026-10-18', 'REMITTANCE_WATERFALL', 'TXN-SAV-2-1792306946387-750AF9', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', 25000.00, 25000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-25T14:45:10'),
+(248, 'JE-20261025-39998849', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIR-CR-ACB49B3E4B', 'Statutory incentive dividend allocation authorized by Board', 10000.00, 10000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-25T14:45:10'),
+(249, 'JE-20261025-7E10279E', '2026-10-18', 'REMITTANCE_WATERFALL', 'TXN-FCL-G-88-1-1792307701', 'Guarantor collateral foreclosure offset for Olaleke Olaoye (L-WMC-2026-3EB551D4)', 30000.00, 30000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-25T14:45:10'),
+(250, 'JE-20261025-30A59BD6', '2026-10-18', 'REMITTANCE_WATERFALL', 'TXN-SAV-2-1792308376686-3AC8FA', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', 25000.00, 25000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-25T14:45:10')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.journal_entries (id, entry_number, entry_date, source_module, source_reference, narration, total_debit, total_credit, is_balanced, status, created_by, approved_by, approved_at, supporting_doc_url, created_at) VALUES
+(251, 'JE-20261025-62BAAC3C', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIR-CR-3763123C9F', 'Statutory incentive dividend allocation authorized by Board', 10000.00, 10000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-25T14:45:10'),
+(252, 'JE-20261025-33946658', '2026-10-18', 'REMITTANCE_WATERFALL', 'TXN-FCL-B-97-1792308408', 'Foreclosure offset against defaulted loan L-WMC-2026-14744738', 30000.00, 30000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-25T14:45:10'),
+(253, 'JE-20261025-80737B35', '2026-10-18', 'REMITTANCE_WATERFALL', 'TXN-FCL-G-97-1-1792308408', 'Guarantor collateral foreclosure offset for Olaleke Olaoye (L-WMC-2026-14744738)', 20000.00, 20000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-25T14:45:10'),
+(254, 'JE-20261025-78C50346', '2026-10-18', 'REMITTANCE_WATERFALL', 'TXN-SAV-2-1792310221390-8B5318', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', 25000.00, 25000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-25T14:45:10'),
+(255, 'JE-20261025-FB68C446', '2026-10-18', 'REMITTANCE_WATERFALL', 'DIR-CR-66A42C0AD6', 'Statutory incentive dividend allocation authorized by Board', 10000.00, 10000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-25T14:45:10'),
+(256, 'JE-20261025-BE9CFEA8', '2026-10-18', 'REMITTANCE_WATERFALL', 'TXN-FCL-B-100-1792310232', 'Foreclosure offset against defaulted loan L-WMC-2026-A30ED407', 30000.00, 30000.00, TRUE, 'POSTED', 2, NULL, NULL, NULL, '2026-10-25T14:45:10'),
+(257, 'JE-20261025-6A385C98', '2026-10-18', 'REMITTANCE_WATERFALL', 'TXN-FCL-G-100-1-1792310232', 'Guarantor collateral foreclosure offset for Olaleke Olaoye (L-WMC-2026-A30ED407)', 20000.00, 20000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-25T14:45:10'),
+(258, 'JE-20261025-E0896837', '2026-10-25', 'MANUAL_JOURNAL', 'TEST-BAL-1792935910', 'Balanced test journal entry', 25000.00, 25000.00, TRUE, 'POSTED', 1, NULL, NULL, NULL, '2026-10-25T14:45:10'),
+(259, 'JE-20261025-9A494C77', '2026-10-25', 'MANUAL_JOURNAL', 'MAN-DRAFT-2A8AE9', 'Monthly Cloud Database Hosting & Maintenance Invoice', 15000.00, 15000.00, TRUE, 'POSTED', 2, 1, '2026-10-25T14:45:10', 'https://wmc-storage/vouchers/inv-hosting-2026.pdf', '2026-10-25T14:45:10'),
+(260, 'JE-20261025-0ED7A9F1', '2026-10-25', 'DIVIDEND_DISTRIBUTION', 'DIV-PER-8', 'Statutory Dividend & Surplus Distribution (FY2026 Official Dividend Run)', 499999.98, 499999.98, TRUE, 'POSTED', 1, 1, '2026-10-25T14:45:11', NULL, '2026-10-25T14:45:11')
+ON CONFLICT DO NOTHING;
+
+SELECT setval(pg_get_serial_sequence('public.journal_entries', 'id'), COALESCE((SELECT MAX(id) FROM public.journal_entries), 1), true);
+
+-- ---------------------------------------------------------------------
+-- Table: journal_entry_lines (543 records)
+-- ---------------------------------------------------------------------
+INSERT INTO public.journal_entry_lines (id, journal_entry_id, account_id, line_type, amount, memo, created_at) VALUES
+(1, 1, 1, 'DEBIT', 50000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:00'),
+(2, 1, 5, 'CREDIT', 50000.00, 'Initial deposit for 40th Milestone Birthday Celebration Target', '2026-10-18T06:55:00'),
+(3, 2, 1, 'DEBIT', 75000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:00'),
+(4, 2, 5, 'CREDIT', 75000.00, 'Monthly bonus top-up for 40th Birthday', '2026-10-18T06:55:00'),
+(5, 3, 5, 'DEBIT', 50000.00, 'Maturity Payout for 40th Milestone Birthday Celebration Target to Polaris Bank Limited 1140029381', '2026-10-18T06:55:00'),
+(6, 3, 1, 'CREDIT', 50000.00, 'Payout from Polaris Escrow', '2026-10-18T06:55:00'),
+(7, 4, 5, 'DEBIT', 75000.00, 'Maturity Payout for 40th Milestone Birthday Celebration Target to Polaris Bank Limited 1140029381', '2026-10-18T06:55:00'),
+(8, 4, 1, 'CREDIT', 75000.00, 'Payout from Polaris Escrow', '2026-10-18T06:55:00'),
+(9, 5, 1, 'DEBIT', 100000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:00'),
+(10, 5, 5, 'CREDIT', 100000.00, 'Initial deposit for Harvard Executive Leadership Certificate', '2026-10-18T06:55:00'),
+(11, 6, 1, 'DEBIT', 50000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:00'),
+(12, 6, 5, 'CREDIT', 50000.00, 'Quarterly allocation', '2026-10-18T06:55:00'),
+(13, 7, 1, 'DEBIT', 5000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:00'),
+(14, 7, 5, 'CREDIT', 5000.00, 'Paystack Inward Transfer: DVA 9926000001', '2026-10-18T06:55:00'),
+(15, 8, 1, 'DEBIT', 50000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:00'),
+(16, 8, 5, 'CREDIT', 50000.00, 'Initial deposit for 40th Milestone Birthday Celebration Target', '2026-10-18T06:55:00'),
+(17, 9, 1, 'DEBIT', 75000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:00'),
+(18, 9, 5, 'CREDIT', 75000.00, 'Monthly bonus top-up for 40th Birthday', '2026-10-18T06:55:00'),
+(19, 10, 5, 'DEBIT', 50000.00, 'Maturity Payout for 40th Milestone Birthday Celebration Target to Polaris Bank Limited 1140029381', '2026-10-18T06:55:00'),
+(20, 10, 1, 'CREDIT', 50000.00, 'Payout from Polaris Escrow', '2026-10-18T06:55:00'),
+(21, 11, 5, 'DEBIT', 75000.00, 'Maturity Payout for 40th Milestone Birthday Celebration Target to Polaris Bank Limited 1140029381', '2026-10-18T06:55:00'),
+(22, 11, 1, 'CREDIT', 75000.00, 'Payout from Polaris Escrow', '2026-10-18T06:55:00'),
+(23, 12, 1, 'DEBIT', 1000.00, 'Welfare contribution into Polaris Escrow', '2026-10-18T06:55:00'),
+(24, 12, 7, 'CREDIT', 1000.00, 'Welfare Solidarity Pool Levy (Adv #WMC-ADV-202610-0001)', '2026-10-18T06:55:00'),
+(25, 13, 1, 'DEBIT', 1000.00, 'Share equity subscription into Polaris Escrow', '2026-10-18T06:55:00'),
+(26, 13, 9, 'CREDIT', 1000.00, 'Share Capital Equity Subscription (1 units)', '2026-10-18T06:55:00'),
+(27, 14, 1, 'DEBIT', 1000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:00'),
+(28, 14, 5, 'CREDIT', 1000.00, 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001)', '2026-10-18T06:55:00'),
+(29, 15, 1, 'DEBIT', 3000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:00'),
+(30, 15, 5, 'CREDIT', 3000.00, 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001)', '2026-10-18T06:55:00'),
+(31, 16, 1, 'DEBIT', 4000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:00'),
+(32, 16, 5, 'CREDIT', 4000.00, 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001)', '2026-10-18T06:55:00'),
+(33, 17, 1, 'DEBIT', 15000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:00'),
+(34, 17, 5, 'CREDIT', 15000.00, 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001) [Includes Surplus: NGN 15,000.00]', '2026-10-18T06:55:00'),
+(35, 18, 1, 'DEBIT', 5000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:00'),
+(36, 18, 5, 'CREDIT', 5000.00, 'Paystack Inward Transfer: DVA 9926000001', '2026-10-18T06:55:00'),
+(37, 19, 1, 'DEBIT', 5000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:00'),
+(38, 19, 5, 'CREDIT', 5000.00, 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001) [Includes Surplus: NGN 5,000.00]', '2026-10-18T06:55:00'),
+(39, 20, 1, 'DEBIT', 3000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:00'),
+(40, 20, 5, 'CREDIT', 3000.00, 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001) [Includes Surplus: NGN 3,000.00]', '2026-10-18T06:55:00'),
+(41, 21, 1, 'DEBIT', 15000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:00'),
+(42, 21, 5, 'CREDIT', 15000.00, 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001) [Includes Surplus: NGN 15,000.00]', '2026-10-18T06:55:00'),
+(43, 22, 1, 'DEBIT', 3000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:00'),
+(44, 22, 5, 'CREDIT', 3000.00, 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001) [Includes Surplus: NGN 3,000.00]', '2026-10-18T06:55:00'),
+(45, 23, 1, 'DEBIT', 15000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:00'),
+(46, 23, 5, 'CREDIT', 15000.00, 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001) [Includes Surplus: NGN 15,000.00]', '2026-10-18T06:55:00'),
+(47, 24, 1, 'DEBIT', 5000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:00'),
+(48, 24, 5, 'CREDIT', 5000.00, 'Paystack Inward Transfer: DVA 9926000001', '2026-10-18T06:55:00'),
+(49, 25, 1, 'DEBIT', 5000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:00'),
+(50, 25, 5, 'CREDIT', 5000.00, 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001) [Includes Surplus: NGN 5,000.00]', '2026-10-18T06:55:00')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.journal_entry_lines (id, journal_entry_id, account_id, line_type, amount, memo, created_at) VALUES
+(51, 26, 1, 'DEBIT', 50000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:00'),
+(52, 26, 5, 'CREDIT', 50000.00, 'Initial deposit for 40th Milestone Birthday Celebration Target', '2026-10-18T06:55:00'),
+(53, 27, 1, 'DEBIT', 75000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:00'),
+(54, 27, 5, 'CREDIT', 75000.00, 'Monthly bonus top-up for 40th Birthday', '2026-10-18T06:55:00'),
+(55, 28, 5, 'DEBIT', 50000.00, 'Maturity Payout for 40th Milestone Birthday Celebration Target to Polaris Bank Limited 1140029381', '2026-10-18T06:55:00'),
+(56, 28, 1, 'CREDIT', 50000.00, 'Payout from Polaris Escrow', '2026-10-18T06:55:00'),
+(57, 29, 5, 'DEBIT', 75000.00, 'Maturity Payout for 40th Milestone Birthday Celebration Target to Polaris Bank Limited 1140029381', '2026-10-18T06:55:00'),
+(58, 29, 1, 'CREDIT', 75000.00, 'Payout from Polaris Escrow', '2026-10-18T06:55:00'),
+(59, 30, 1, 'DEBIT', 3000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:00'),
+(60, 30, 5, 'CREDIT', 3000.00, 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001) [Includes Surplus: NGN 3,000.00]', '2026-10-18T06:55:00'),
+(61, 31, 1, 'DEBIT', 15000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:01'),
+(62, 31, 5, 'CREDIT', 15000.00, 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001) [Includes Surplus: NGN 15,000.00]', '2026-10-18T06:55:01'),
+(63, 32, 1, 'DEBIT', 3000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:01'),
+(64, 32, 5, 'CREDIT', 3000.00, 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001) [Includes Surplus: NGN 3,000.00]', '2026-10-18T06:55:01'),
+(65, 33, 1, 'DEBIT', 15000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:01'),
+(66, 33, 5, 'CREDIT', 15000.00, 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001) [Includes Surplus: NGN 15,000.00]', '2026-10-18T06:55:01'),
+(67, 34, 1, 'DEBIT', 5000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:01'),
+(68, 34, 5, 'CREDIT', 5000.00, 'Paystack Inward Transfer: DVA 9926000001', '2026-10-18T06:55:01'),
+(69, 35, 1, 'DEBIT', 5000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:01'),
+(70, 35, 5, 'CREDIT', 5000.00, 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001) [Includes Surplus: NGN 5,000.00]', '2026-10-18T06:55:01'),
+(71, 36, 1, 'DEBIT', 3000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:01'),
+(72, 36, 5, 'CREDIT', 3000.00, 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001) [Includes Surplus: NGN 3,000.00]', '2026-10-18T06:55:01'),
+(73, 37, 1, 'DEBIT', 15000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:01'),
+(74, 37, 5, 'CREDIT', 15000.00, 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001) [Includes Surplus: NGN 15,000.00]', '2026-10-18T06:55:01'),
+(75, 38, 1, 'DEBIT', 50000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:01'),
+(76, 38, 5, 'CREDIT', 50000.00, 'Initial deposit for 40th Milestone Birthday Celebration Target', '2026-10-18T06:55:01'),
+(77, 39, 1, 'DEBIT', 75000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:01'),
+(78, 39, 5, 'CREDIT', 75000.00, 'Monthly bonus top-up for 40th Birthday', '2026-10-18T06:55:01'),
+(79, 40, 5, 'DEBIT', 50000.00, 'Maturity Payout for 40th Milestone Birthday Celebration Target to Polaris Bank Limited 1140029381', '2026-10-18T06:55:01'),
+(80, 40, 1, 'CREDIT', 50000.00, 'Payout from Polaris Escrow', '2026-10-18T06:55:01'),
+(81, 41, 5, 'DEBIT', 75000.00, 'Maturity Payout for 40th Milestone Birthday Celebration Target to Polaris Bank Limited 1140029381', '2026-10-18T06:55:01'),
+(82, 41, 1, 'CREDIT', 75000.00, 'Payout from Polaris Escrow', '2026-10-18T06:55:01'),
+(83, 42, 3, 'DEBIT', 60000.00, 'Member Loan Principal Receivable', '2026-10-18T06:55:01'),
+(84, 42, 1, 'CREDIT', 60000.00, 'Loan disbursement for L-WMC-2026-4B4CF300', '2026-10-18T06:55:01'),
+(85, 43, 3, 'DEBIT', 60000.00, 'Member Loan Principal Receivable', '2026-10-18T06:55:01'),
+(86, 43, 1, 'CREDIT', 60000.00, 'Loan disbursement for L-WMC-2026-7CDE907B', '2026-10-18T06:55:01'),
+(87, 44, 3, 'DEBIT', 50000.00, 'Member Loan Principal Receivable', '2026-10-18T06:55:01'),
+(88, 44, 1, 'CREDIT', 50000.00, 'Loan disbursement for L-WMC-2026-9EB12EA0', '2026-10-18T06:55:01'),
+(89, 45, 1, 'DEBIT', 1000.00, 'Welfare contribution into Polaris Escrow', '2026-10-18T06:55:01'),
+(90, 45, 7, 'CREDIT', 1000.00, 'Welfare Solidarity Pool Levy (Adv #WMC-ADV-202610-0002)', '2026-10-18T06:55:01'),
+(91, 46, 1, 'DEBIT', 1000.00, 'Share equity subscription into Polaris Escrow', '2026-10-18T06:55:01'),
+(92, 46, 9, 'CREDIT', 1000.00, 'Share Capital Equity Subscription (1 units)', '2026-10-18T06:55:01'),
+(93, 47, 1, 'DEBIT', 23000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:01'),
+(94, 47, 5, 'CREDIT', 23000.00, 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 15,000.00]', '2026-10-18T06:55:01'),
+(95, 48, 1, 'DEBIT', 10000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:01'),
+(96, 48, 5, 'CREDIT', 10000.00, 'Test Direct Credit', '2026-10-18T06:55:01'),
+(97, 49, 3, 'DEBIT', 60000.00, 'Member Loan Principal Receivable', '2026-10-18T06:55:01'),
+(98, 49, 1, 'CREDIT', 60000.00, 'Loan disbursement for L-WMC-2026-E600E75C', '2026-10-18T06:55:01'),
+(99, 50, 3, 'DEBIT', 50000.00, 'Member Loan Principal Receivable', '2026-10-18T06:55:01'),
+(100, 50, 1, 'CREDIT', 50000.00, 'Loan disbursement for L-WMC-2026-19495C0D', '2026-10-18T06:55:01')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.journal_entry_lines (id, journal_entry_id, account_id, line_type, amount, memo, created_at) VALUES
+(101, 51, 3, 'DEBIT', 60000.00, 'Member Loan Principal Receivable', '2026-10-18T06:55:01'),
+(102, 51, 1, 'CREDIT', 60000.00, 'Loan disbursement for L-WMC-2026-F4289A87', '2026-10-18T06:55:01'),
+(103, 52, 3, 'DEBIT', 50000.00, 'Member Loan Principal Receivable', '2026-10-18T06:55:01'),
+(104, 52, 1, 'CREDIT', 50000.00, 'Loan disbursement for L-WMC-2026-1B64AC71', '2026-10-18T06:55:01'),
+(105, 53, 1, 'DEBIT', 25000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:01'),
+(106, 53, 5, 'CREDIT', 25000.00, 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', '2026-10-18T06:55:01'),
+(107, 54, 3, 'DEBIT', 60000.00, 'Member Loan Principal Receivable', '2026-10-18T06:55:01'),
+(108, 54, 1, 'CREDIT', 60000.00, 'Loan disbursement for L-WMC-2026-024087A4', '2026-10-18T06:55:01'),
+(109, 55, 3, 'DEBIT', 50000.00, 'Member Loan Principal Receivable', '2026-10-18T06:55:01'),
+(110, 55, 1, 'CREDIT', 50000.00, 'Loan disbursement for L-WMC-2026-6B760A07', '2026-10-18T06:55:01'),
+(111, 56, 1, 'DEBIT', 25000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:01'),
+(112, 56, 5, 'CREDIT', 25000.00, 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', '2026-10-18T06:55:01'),
+(113, 57, 1, 'DEBIT', 10000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:01'),
+(114, 57, 5, 'CREDIT', 10000.00, 'Statutory incentive dividend allocation authorized by Board', '2026-10-18T06:55:01'),
+(115, 58, 3, 'DEBIT', 60000.00, 'Member Loan Principal Receivable', '2026-10-18T06:55:01'),
+(116, 58, 1, 'CREDIT', 60000.00, 'Loan disbursement for L-WMC-2026-C047AD92', '2026-10-18T06:55:01'),
+(117, 59, 3, 'DEBIT', 50000.00, 'Member Loan Principal Receivable', '2026-10-18T06:55:01'),
+(118, 59, 1, 'CREDIT', 50000.00, 'Loan disbursement for L-WMC-2026-25CED089', '2026-10-18T06:55:01'),
+(119, 60, 1, 'DEBIT', 25000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:01'),
+(120, 60, 5, 'CREDIT', 25000.00, 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', '2026-10-18T06:55:01'),
+(121, 61, 1, 'DEBIT', 10000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:01'),
+(122, 61, 5, 'CREDIT', 10000.00, 'Statutory incentive dividend allocation authorized by Board', '2026-10-18T06:55:01'),
+(123, 62, 3, 'DEBIT', 60000.00, 'Member Loan Principal Receivable', '2026-10-18T06:55:01'),
+(124, 62, 1, 'CREDIT', 60000.00, 'Loan disbursement for L-WMC-2026-D7E76024', '2026-10-18T06:55:01'),
+(125, 63, 3, 'DEBIT', 50000.00, 'Member Loan Principal Receivable', '2026-10-18T06:55:01'),
+(126, 63, 1, 'CREDIT', 50000.00, 'Loan disbursement for L-WMC-2026-F811C6EA', '2026-10-18T06:55:01'),
+(127, 64, 1, 'DEBIT', 25000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:01'),
+(128, 64, 5, 'CREDIT', 25000.00, 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', '2026-10-18T06:55:01'),
+(129, 65, 1, 'DEBIT', 10000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:01'),
+(130, 65, 5, 'CREDIT', 10000.00, 'Statutory incentive dividend allocation authorized by Board', '2026-10-18T06:55:01'),
+(131, 66, 3, 'DEBIT', 60000.00, 'Member Loan Principal Receivable', '2026-10-18T06:55:01'),
+(132, 66, 1, 'CREDIT', 60000.00, 'Loan disbursement for L-WMC-2026-3E14355D', '2026-10-18T06:55:01'),
+(133, 67, 3, 'DEBIT', 50000.00, 'Member Loan Principal Receivable', '2026-10-18T06:55:01'),
+(134, 67, 1, 'CREDIT', 50000.00, 'Loan disbursement for L-WMC-2026-16B82E09', '2026-10-18T06:55:01'),
+(135, 68, 1, 'DEBIT', 25000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:01'),
+(136, 68, 5, 'CREDIT', 25000.00, 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', '2026-10-18T06:55:01'),
+(137, 69, 1, 'DEBIT', 10000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:01'),
+(138, 69, 5, 'CREDIT', 10000.00, 'Statutory incentive dividend allocation authorized by Board', '2026-10-18T06:55:01'),
+(139, 70, 3, 'DEBIT', 60000.00, 'Member Loan Principal Receivable', '2026-10-18T06:55:01'),
+(140, 70, 1, 'CREDIT', 60000.00, 'Loan disbursement for L-WMC-2026-ACD892B1', '2026-10-18T06:55:01'),
+(141, 71, 3, 'DEBIT', 50000.00, 'Member Loan Principal Receivable', '2026-10-18T06:55:01'),
+(142, 71, 1, 'CREDIT', 50000.00, 'Loan disbursement for L-WMC-2026-9EB3E69D', '2026-10-18T06:55:01'),
+(143, 72, 1, 'DEBIT', 25000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:01'),
+(144, 72, 5, 'CREDIT', 25000.00, 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', '2026-10-18T06:55:01'),
+(145, 73, 1, 'DEBIT', 10000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:01'),
+(146, 73, 5, 'CREDIT', 10000.00, 'Statutory incentive dividend allocation authorized by Board', '2026-10-18T06:55:01'),
+(147, 74, 3, 'DEBIT', 50000.00, 'Member Loan Principal Receivable', '2026-10-18T06:55:01'),
+(148, 74, 1, 'CREDIT', 50000.00, 'Loan disbursement for L-WMC-2026-B08B212F', '2026-10-18T06:55:01'),
+(149, 75, 3, 'DEBIT', 60000.00, 'Member Loan Principal Receivable', '2026-10-18T06:55:01'),
+(150, 75, 1, 'CREDIT', 60000.00, 'Loan disbursement for L-WMC-2026-4D6E3006', '2026-10-18T06:55:01')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.journal_entry_lines (id, journal_entry_id, account_id, line_type, amount, memo, created_at) VALUES
+(151, 76, 3, 'DEBIT', 50000.00, 'Member Loan Principal Receivable', '2026-10-18T06:55:01'),
+(152, 76, 1, 'CREDIT', 50000.00, 'Loan disbursement for L-WMC-2026-308E47FD', '2026-10-18T06:55:01'),
+(153, 77, 1, 'DEBIT', 25000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:01'),
+(154, 77, 5, 'CREDIT', 25000.00, 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', '2026-10-18T06:55:01'),
+(155, 78, 1, 'DEBIT', 10000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:02'),
+(156, 78, 5, 'CREDIT', 10000.00, 'Statutory incentive dividend allocation authorized by Board', '2026-10-18T06:55:02'),
+(157, 79, 3, 'DEBIT', 60000.00, 'Member Loan Principal Receivable', '2026-10-18T06:55:02'),
+(158, 79, 1, 'CREDIT', 60000.00, 'Loan disbursement for L-WMC-2026-AB3FE649', '2026-10-18T06:55:02'),
+(159, 80, 3, 'DEBIT', 50000.00, 'Member Loan Principal Receivable', '2026-10-18T06:55:02'),
+(160, 80, 1, 'CREDIT', 50000.00, 'Loan disbursement for L-WMC-2026-D1EFAC40', '2026-10-18T06:55:02'),
+(161, 81, 1, 'DEBIT', 25000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:02'),
+(162, 81, 5, 'CREDIT', 25000.00, 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', '2026-10-18T06:55:02'),
+(163, 82, 1, 'DEBIT', 10000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:02'),
+(164, 82, 5, 'CREDIT', 10000.00, 'Statutory incentive dividend allocation authorized by Board', '2026-10-18T06:55:02'),
+(165, 83, 3, 'DEBIT', 50000.00, 'Member Loan Principal Receivable', '2026-10-18T06:55:02'),
+(166, 83, 1, 'CREDIT', 50000.00, 'Loan disbursement for L-WMC-2026-7E4740D4', '2026-10-18T06:55:02'),
+(167, 84, 3, 'DEBIT', 60000.00, 'Member Loan Principal Receivable', '2026-10-18T06:55:02'),
+(168, 84, 1, 'CREDIT', 60000.00, 'Loan disbursement for L-WMC-2026-679EA013', '2026-10-18T06:55:02'),
+(169, 85, 3, 'DEBIT', 50000.00, 'Member Loan Principal Receivable', '2026-10-18T06:55:02'),
+(170, 85, 1, 'CREDIT', 50000.00, 'Loan disbursement for L-WMC-2026-AD838415', '2026-10-18T06:55:02'),
+(171, 86, 1, 'DEBIT', 5000.00, 'Entrance fee into Polaris Escrow', '2026-10-18T06:55:02'),
+(172, 86, 14, 'CREDIT', 5000.00, 'Entrance / Registration Fee - Article 7 (Adv #WMC-ADV-202610-0002)', '2026-10-18T06:55:02'),
+(173, 87, 1, 'DEBIT', 20000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:02'),
+(174, 87, 5, 'CREDIT', 20000.00, 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 20,000.00]', '2026-10-18T06:55:02'),
+(175, 88, 1, 'DEBIT', 10000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:02'),
+(176, 88, 5, 'CREDIT', 10000.00, 'Statutory incentive dividend allocation authorized by Board', '2026-10-18T06:55:02'),
+(177, 89, 3, 'DEBIT', 50000.00, 'Member Loan Principal Receivable', '2026-10-18T06:55:02'),
+(178, 89, 1, 'CREDIT', 50000.00, 'Loan disbursement for L-WMC-2026-4D8EEC21', '2026-10-18T06:55:02'),
+(179, 90, 3, 'DEBIT', 60000.00, 'Member Loan Principal Receivable', '2026-10-18T06:55:02'),
+(180, 90, 1, 'CREDIT', 60000.00, 'Loan disbursement for L-WMC-2026-BD294F9F', '2026-10-18T06:55:02'),
+(181, 91, 3, 'DEBIT', 50000.00, 'Member Loan Principal Receivable', '2026-10-18T06:55:02'),
+(182, 91, 1, 'CREDIT', 50000.00, 'Loan disbursement for L-WMC-2026-AF0E02D6', '2026-10-18T06:55:02'),
+(183, 92, 1, 'DEBIT', 25000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:02'),
+(184, 92, 5, 'CREDIT', 25000.00, 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', '2026-10-18T06:55:02'),
+(185, 93, 1, 'DEBIT', 10000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:02'),
+(186, 93, 5, 'CREDIT', 10000.00, 'Statutory incentive dividend allocation authorized by Board', '2026-10-18T06:55:02'),
+(187, 94, 3, 'DEBIT', 50000.00, 'Member Loan Principal Receivable', '2026-10-18T06:55:02'),
+(188, 94, 1, 'CREDIT', 50000.00, 'Loan disbursement for L-WMC-2026-52DC9B5C', '2026-10-18T06:55:02'),
+(189, 95, 3, 'DEBIT', 60000.00, 'Member Loan Principal Receivable', '2026-10-18T06:55:02'),
+(190, 95, 1, 'CREDIT', 60000.00, 'Loan disbursement for L-WMC-2026-BA661222', '2026-10-18T06:55:02'),
+(191, 96, 3, 'DEBIT', 50000.00, 'Member Loan Principal Receivable', '2026-10-18T06:55:02'),
+(192, 96, 1, 'CREDIT', 50000.00, 'Loan disbursement for L-WMC-2026-38376CF0', '2026-10-18T06:55:02'),
+(193, 97, 1, 'DEBIT', 25000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:02'),
+(194, 97, 5, 'CREDIT', 25000.00, 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', '2026-10-18T06:55:02'),
+(195, 98, 1, 'DEBIT', 10000.00, 'Remittance into Polaris Escrow', '2026-10-18T06:55:02'),
+(196, 98, 5, 'CREDIT', 10000.00, 'Statutory incentive dividend allocation authorized by Board', '2026-10-18T06:55:02'),
+(197, 99, 3, 'DEBIT', 50000.00, 'Member Loan Principal Receivable', '2026-10-18T06:55:02'),
+(198, 99, 1, 'CREDIT', 50000.00, 'Loan disbursement for L-WMC-2026-8AC49362', '2026-10-18T06:55:02'),
+(199, 100, 3, 'DEBIT', 50000.00, 'Member Loan Principal Receivable', '2026-10-18T06:55:02'),
+(200, 100, 1, 'CREDIT', 50000.00, 'Loan disbursement for L-WMC-2026-27B0D1DA', '2026-10-18T06:55:02')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.journal_entry_lines (id, journal_entry_id, account_id, line_type, amount, memo, created_at) VALUES
+(201, 101, 3, 'DEBIT', 50000.00, 'Member Loan Principal Receivable', '2026-10-18T06:55:02'),
+(202, 101, 1, 'CREDIT', 50000.00, 'Loan disbursement for L-WMC-2026-F0C66457', '2026-10-18T06:55:02'),
+(203, 102, 1, 'DEBIT', 25000.00, 'Polaris Escrow deposit', '2026-10-18T06:58:15'),
+(204, 102, 18, 'CREDIT', 25000.00, 'Sundry operational donation', '2026-10-18T06:58:15'),
+(205, 103, 23, 'DEBIT', 15000.00, 'Cloud Server maintenance fee', '2026-10-18T06:58:15'),
+(206, 103, 1, 'CREDIT', 15000.00, 'Payment from Polaris Bank Escrow', '2026-10-18T06:58:15'),
+(207, 104, 12, 'DEBIT', 500000.00, 'Retained Surplus Allocated for FY2026 Official Dividend Run', '2026-10-18T06:58:15'),
+(208, 104, 10, 'CREDIT', 250000.00, 'Statutory Reserve Fund 50% Allocation (Cap C15)', '2026-10-18T06:58:15'),
+(209, 104, 5, 'CREDIT', 249999.98, 'Member Regular Savings Dividend Payouts', '2026-10-18T06:58:15'),
+(210, 104, 12, 'CREDIT', 0.02, 'Unallocated Surplus Retained', '2026-10-18T06:58:15'),
+(211, 105, 5, 'DEBIT', 150000.00, 'Member Savings Balance Liquidated', '2026-10-18T06:58:27'),
+(212, 105, 9, 'DEBIT', 25000.00, 'Member Share Capital Liquidated', '2026-10-18T06:58:27'),
+(213, 105, 17, 'CREDIT', 5000.00, 'Membership Exit Administrative Processing Fee', '2026-10-18T06:58:27'),
+(214, 105, 1, 'CREDIT', 170000.00, 'Net Settlement Payout via Polaris Bank', '2026-10-18T06:58:27'),
+(215, 106, 1, 'DEBIT', 87070.87, 'Remittance into Polaris Escrow', '2026-10-18T07:14:41'),
+(216, 106, 5, 'CREDIT', 87070.87, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T07:14:41'),
+(217, 107, 1, 'DEBIT', 73643.41, 'Remittance into Polaris Escrow', '2026-10-18T07:14:41'),
+(218, 107, 5, 'CREDIT', 73643.41, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T07:14:41'),
+(219, 108, 1, 'DEBIT', 14880.95, 'Remittance into Polaris Escrow', '2026-10-18T07:14:41'),
+(220, 108, 5, 'CREDIT', 14880.95, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T07:14:41'),
+(221, 109, 1, 'DEBIT', 14880.95, 'Remittance into Polaris Escrow', '2026-10-18T07:14:41'),
+(222, 109, 5, 'CREDIT', 14880.95, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T07:14:41'),
+(223, 110, 1, 'DEBIT', 14880.95, 'Remittance into Polaris Escrow', '2026-10-18T07:14:41'),
+(224, 110, 5, 'CREDIT', 14880.95, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T07:14:41'),
+(225, 111, 1, 'DEBIT', 14880.95, 'Remittance into Polaris Escrow', '2026-10-18T07:14:41'),
+(226, 111, 5, 'CREDIT', 14880.95, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T07:14:41'),
+(227, 112, 1, 'DEBIT', 14880.95, 'Remittance into Polaris Escrow', '2026-10-18T07:14:41'),
+(228, 112, 5, 'CREDIT', 14880.95, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T07:14:41'),
+(229, 113, 1, 'DEBIT', 14880.95, 'Remittance into Polaris Escrow', '2026-10-18T07:14:41'),
+(230, 113, 5, 'CREDIT', 14880.95, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T07:14:41'),
+(231, 114, 3, 'DEBIT', 50000.00, 'Member Loan Principal Receivable', '2026-10-18T07:14:41'),
+(232, 114, 1, 'CREDIT', 50000.00, 'Loan disbursement for L-WMC-2026-73031A15', '2026-10-18T07:14:41'),
+(233, 115, 1, 'DEBIT', 25000.00, 'Polaris Escrow deposit', '2026-10-18T07:14:41'),
+(234, 115, 18, 'CREDIT', 25000.00, 'Sundry operational donation', '2026-10-18T07:14:41'),
+(235, 116, 23, 'DEBIT', 15000.00, 'Cloud Server maintenance fee', '2026-10-18T07:14:42'),
+(236, 116, 1, 'CREDIT', 15000.00, 'Payment from Polaris Bank Escrow', '2026-10-18T07:14:42'),
+(237, 117, 12, 'DEBIT', 500000.00, 'Retained Surplus Allocated for FY2026 Official Dividend Run', '2026-10-18T07:14:42'),
+(238, 117, 10, 'CREDIT', 250000.00, 'Statutory Reserve Fund 50% Allocation (Cap C15)', '2026-10-18T07:14:42'),
+(239, 117, 5, 'CREDIT', 249999.99, 'Member Regular Savings Dividend Payouts', '2026-10-18T07:14:42'),
+(240, 117, 12, 'CREDIT', 0.01, 'Unallocated Surplus Retained', '2026-10-18T07:14:42'),
+(241, 118, 3, 'DEBIT', 60000.00, 'Member Loan Principal Facilities Receivable', '2026-10-18T07:15:25'),
+(242, 118, 1, 'CREDIT', 60000.00, 'Disbursement payout via Polaris Bank Escrow', '2026-10-18T07:15:25'),
+(243, 119, 3, 'DEBIT', 50000.00, 'Member Loan Principal Facilities Receivable', '2026-10-18T07:15:25'),
+(244, 119, 1, 'CREDIT', 50000.00, 'Disbursement payout via Polaris Bank Escrow', '2026-10-18T07:15:25'),
+(245, 120, 3, 'DEBIT', 60000.00, 'Member Loan Principal Facilities Receivable', '2026-10-18T07:20:14'),
+(246, 120, 1, 'CREDIT', 60000.00, 'Disbursement payout via Polaris Bank Escrow', '2026-10-18T07:20:14'),
+(247, 121, 3, 'DEBIT', 50000.00, 'Member Loan Principal Facilities Receivable', '2026-10-18T07:20:14'),
+(248, 121, 1, 'CREDIT', 50000.00, 'Disbursement payout via Polaris Bank Escrow', '2026-10-18T07:20:14'),
+(249, 122, 1, 'DEBIT', 25000.00, 'Member Remittance - Adv #WMC-ADV-202610-0002', '2026-10-18T07:20:14'),
+(250, 122, 5, 'CREDIT', 25000.00, 'Regular Savings Deposit', '2026-10-18T07:20:14')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.journal_entry_lines (id, journal_entry_id, account_id, line_type, amount, memo, created_at) VALUES
+(251, 123, 1, 'DEBIT', 6000.00, 'Member Remittance - Adv #WMC-ADV-202610-10004', '2026-10-18T07:20:36'),
+(252, 123, 14, 'CREDIT', 5000.00, 'Entrance / Registration Fee', '2026-10-18T07:20:36'),
+(253, 123, 7, 'CREDIT', 1000.00, 'Welfare Solidarity Levy', '2026-10-18T07:20:36'),
+(254, 124, 3, 'DEBIT', 50000.00, 'Member Loan Principal Facilities Receivable', '2026-10-18T07:20:41'),
+(255, 124, 1, 'CREDIT', 50000.00, 'Disbursement payout via Polaris Bank Escrow', '2026-10-18T07:20:41'),
+(256, 125, 5, 'DEBIT', 150000.00, 'Member Savings Balance Liquidated', '2026-10-18T07:20:53'),
+(257, 125, 9, 'DEBIT', 25000.00, 'Member Share Capital Liquidated', '2026-10-18T07:20:53'),
+(258, 125, 17, 'CREDIT', 5000.00, 'Membership Exit Administrative Processing Fee', '2026-10-18T07:20:53'),
+(259, 125, 1, 'CREDIT', 170000.00, 'Net Settlement Payout via Polaris Bank', '2026-10-18T07:20:53'),
+(260, 126, 1, 'DEBIT', 76491.43, 'Remittance into Polaris Escrow', '2026-10-18T07:21:00'),
+(261, 126, 5, 'CREDIT', 76491.43, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T07:21:00'),
+(262, 127, 1, 'DEBIT', 73752.44, 'Remittance into Polaris Escrow', '2026-10-18T07:21:00'),
+(263, 127, 5, 'CREDIT', 73752.44, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T07:21:00'),
+(264, 128, 1, 'DEBIT', 16626.02, 'Remittance into Polaris Escrow', '2026-10-18T07:21:00'),
+(265, 128, 5, 'CREDIT', 16626.02, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T07:21:00'),
+(266, 129, 1, 'DEBIT', 16626.02, 'Remittance into Polaris Escrow', '2026-10-18T07:21:00'),
+(267, 129, 5, 'CREDIT', 16626.02, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T07:21:00'),
+(268, 130, 1, 'DEBIT', 16626.02, 'Remittance into Polaris Escrow', '2026-10-18T07:21:00'),
+(269, 130, 5, 'CREDIT', 16626.02, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T07:21:00'),
+(270, 131, 1, 'DEBIT', 16626.02, 'Remittance into Polaris Escrow', '2026-10-18T07:21:00'),
+(271, 131, 5, 'CREDIT', 16626.02, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T07:21:00'),
+(272, 132, 1, 'DEBIT', 16626.02, 'Remittance into Polaris Escrow', '2026-10-18T07:21:00'),
+(273, 132, 5, 'CREDIT', 16626.02, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T07:21:00'),
+(274, 133, 1, 'DEBIT', 16626.02, 'Remittance into Polaris Escrow', '2026-10-18T07:21:00'),
+(275, 133, 5, 'CREDIT', 16626.02, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T07:21:00'),
+(276, 134, 1, 'DEBIT', 25000.00, 'Remittance into Polaris Escrow', '2026-10-18T07:21:00'),
+(277, 134, 5, 'CREDIT', 25000.00, 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', '2026-10-18T07:21:00'),
+(278, 135, 1, 'DEBIT', 25000.00, 'Remittance into Polaris Escrow', '2026-10-18T07:21:00'),
+(279, 135, 5, 'CREDIT', 25000.00, 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', '2026-10-18T07:21:00'),
+(280, 136, 1, 'DEBIT', 10000.00, 'Remittance into Polaris Escrow', '2026-10-18T07:21:00'),
+(281, 136, 5, 'CREDIT', 10000.00, 'Statutory incentive dividend allocation authorized by Board', '2026-10-18T07:21:00'),
+(282, 137, 1, 'DEBIT', 25000.00, 'Polaris Escrow deposit', '2026-10-18T07:21:00'),
+(283, 137, 18, 'CREDIT', 25000.00, 'Sundry operational donation', '2026-10-18T07:21:00'),
+(284, 138, 23, 'DEBIT', 15000.00, 'Cloud Server maintenance fee', '2026-10-18T07:21:00'),
+(285, 138, 1, 'CREDIT', 15000.00, 'Payment from Polaris Bank Escrow', '2026-10-18T07:21:00'),
+(286, 139, 12, 'DEBIT', 500000.00, 'Retained Surplus Allocated for FY2026 Official Dividend Run', '2026-10-18T07:21:00'),
+(287, 139, 10, 'CREDIT', 250000.00, 'Statutory Reserve Fund 50% Allocation (Cap C15)', '2026-10-18T07:21:00'),
+(288, 139, 5, 'CREDIT', 250000.00, 'Member Regular Savings Dividend Payouts', '2026-10-18T07:21:00'),
+(289, 140, 5, 'DEBIT', 50000.00, 'Foreclosure offset from savings for L-WMC-2026-553AB4D4', '2026-10-18T07:56:34'),
+(290, 140, 3, 'CREDIT', 50000.00, 'Foreclosure liquidation of loan L-WMC-2026-553AB4D4', '2026-10-18T07:56:34'),
+(291, 141, 5, 'DEBIT', 50000.00, 'Foreclosure offset from savings for L-WMC-2026-553AB4D4', '2026-10-18T07:56:55'),
+(292, 141, 3, 'CREDIT', 50000.00, 'Foreclosure liquidation of loan L-WMC-2026-553AB4D4', '2026-10-18T07:56:55'),
+(293, 142, 5, 'DEBIT', 50000.00, 'Foreclosure offset from savings for L-WMC-2026-553AB4D4', '2026-10-18T07:57:46'),
+(294, 142, 3, 'CREDIT', 50000.00, 'Foreclosure liquidation of loan L-WMC-2026-553AB4D4', '2026-10-18T07:57:46'),
+(295, 143, 1, 'DEBIT', 65954.87, 'Remittance into Polaris Escrow', '2026-10-18T07:58:02'),
+(296, 143, 5, 'CREDIT', 65954.87, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T07:58:02'),
+(297, 144, 1, 'DEBIT', 76574.45, 'Remittance into Polaris Escrow', '2026-10-18T07:58:02'),
+(298, 144, 5, 'CREDIT', 76574.45, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T07:58:02'),
+(299, 145, 1, 'DEBIT', 17911.78, 'Remittance into Polaris Escrow', '2026-10-18T07:58:02'),
+(300, 145, 5, 'CREDIT', 17911.78, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T07:58:02')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.journal_entry_lines (id, journal_entry_id, account_id, line_type, amount, memo, created_at) VALUES
+(301, 146, 1, 'DEBIT', 17911.78, 'Remittance into Polaris Escrow', '2026-10-18T07:58:02'),
+(302, 146, 5, 'CREDIT', 17911.78, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T07:58:02'),
+(303, 147, 1, 'DEBIT', 17911.78, 'Remittance into Polaris Escrow', '2026-10-18T07:58:02'),
+(304, 147, 5, 'CREDIT', 17911.78, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T07:58:02'),
+(305, 148, 1, 'DEBIT', 17911.78, 'Remittance into Polaris Escrow', '2026-10-18T07:58:02'),
+(306, 148, 5, 'CREDIT', 17911.78, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T07:58:02'),
+(307, 149, 1, 'DEBIT', 17911.78, 'Remittance into Polaris Escrow', '2026-10-18T07:58:02'),
+(308, 149, 5, 'CREDIT', 17911.78, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T07:58:02'),
+(309, 150, 1, 'DEBIT', 17911.78, 'Remittance into Polaris Escrow', '2026-10-18T07:58:02'),
+(310, 150, 5, 'CREDIT', 17911.78, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T07:58:02'),
+(311, 151, 5, 'DEBIT', 30000.00, 'Foreclosure offset against defaulted loan L-WMC-2026-553AB4D4', '2026-10-18T07:58:02'),
+(312, 151, 1, 'CREDIT', 30000.00, 'Payout from Polaris Escrow', '2026-10-18T07:58:02'),
+(313, 152, 5, 'DEBIT', 30000.00, 'Foreclosure offset against defaulted loan L-WMC-2026-553AB4D4', '2026-10-18T07:58:02'),
+(314, 152, 1, 'CREDIT', 30000.00, 'Payout from Polaris Escrow', '2026-10-18T07:58:02'),
+(315, 153, 5, 'DEBIT', 20000.00, 'Guarantor collateral foreclosure offset for Olaleke Olaoye (L-WMC-2026-553AB4D4)', '2026-10-18T07:58:02'),
+(316, 153, 1, 'CREDIT', 20000.00, 'Payout from Polaris Escrow', '2026-10-18T07:58:02'),
+(317, 154, 5, 'DEBIT', 30000.00, 'Foreclosure offset against defaulted loan L-WMC-2026-553AB4D4', '2026-10-18T07:58:02'),
+(318, 154, 1, 'CREDIT', 30000.00, 'Payout from Polaris Escrow', '2026-10-18T07:58:02'),
+(319, 155, 5, 'DEBIT', 20000.00, 'Guarantor collateral foreclosure offset for Olaleke Olaoye (L-WMC-2026-553AB4D4)', '2026-10-18T07:58:02'),
+(320, 155, 1, 'CREDIT', 20000.00, 'Payout from Polaris Escrow', '2026-10-18T07:58:02'),
+(321, 156, 5, 'DEBIT', 30000.00, 'Foreclosure offset against defaulted loan L-WMC-2026-553AB4D4', '2026-10-18T07:58:02'),
+(322, 156, 1, 'CREDIT', 30000.00, 'Payout from Polaris Escrow', '2026-10-18T07:58:02'),
+(323, 157, 5, 'DEBIT', 20000.00, 'Guarantor collateral foreclosure offset for Olaleke Olaoye (L-WMC-2026-553AB4D4)', '2026-10-18T07:58:02'),
+(324, 157, 1, 'CREDIT', 20000.00, 'Payout from Polaris Escrow', '2026-10-18T07:58:02'),
+(325, 158, 5, 'DEBIT', 30000.00, 'Foreclosure offset against defaulted loan L-WMC-2026-553AB4D4', '2026-10-18T07:58:02'),
+(326, 158, 1, 'CREDIT', 30000.00, 'Payout from Polaris Escrow', '2026-10-18T07:58:02'),
+(327, 159, 5, 'DEBIT', 20000.00, 'Guarantor collateral foreclosure offset for Olaleke Olaoye (L-WMC-2026-553AB4D4)', '2026-10-18T07:58:02'),
+(328, 159, 1, 'CREDIT', 20000.00, 'Payout from Polaris Escrow', '2026-10-18T07:58:02'),
+(329, 160, 1, 'DEBIT', 25000.00, 'Polaris Escrow deposit', '2026-10-18T07:58:03'),
+(330, 160, 18, 'CREDIT', 25000.00, 'Sundry operational donation', '2026-10-18T07:58:03'),
+(331, 161, 23, 'DEBIT', 15000.00, 'Cloud Server maintenance fee', '2026-10-18T07:58:03'),
+(332, 161, 1, 'CREDIT', 15000.00, 'Payment from Polaris Bank Escrow', '2026-10-18T07:58:03'),
+(333, 162, 12, 'DEBIT', 500000.00, 'Retained Surplus Allocated for FY2026 Official Dividend Run', '2026-10-18T07:58:03'),
+(334, 162, 10, 'CREDIT', 250000.00, 'Statutory Reserve Fund 50% Allocation (Cap C15)', '2026-10-18T07:58:03'),
+(335, 162, 5, 'CREDIT', 249999.98, 'Member Regular Savings Dividend Payouts', '2026-10-18T07:58:03'),
+(336, 162, 12, 'CREDIT', 0.02, 'Unallocated Surplus Retained', '2026-10-18T07:58:03'),
+(337, 163, 3, 'DEBIT', 60000.00, 'Member Loan Principal Facilities Receivable', '2026-10-18T07:58:18'),
+(338, 163, 1, 'CREDIT', 60000.00, 'Disbursement payout via Polaris Bank Escrow', '2026-10-18T07:58:18'),
+(339, 164, 3, 'DEBIT', 50000.00, 'Member Loan Principal Facilities Receivable', '2026-10-18T07:58:18'),
+(340, 164, 1, 'CREDIT', 50000.00, 'Disbursement payout via Polaris Bank Escrow', '2026-10-18T07:58:18'),
+(341, 165, 1, 'DEBIT', 25000.00, 'Member Remittance - Adv #WMC-ADV-202610-0002', '2026-10-18T07:58:18'),
+(342, 165, 5, 'CREDIT', 25000.00, 'Regular Savings Deposit', '2026-10-18T07:58:18'),
+(343, 166, 1, 'DEBIT', 6000.00, 'Member Remittance - Adv #WMC-ADV-202610-10011', '2026-10-18T07:59:24'),
+(344, 166, 14, 'CREDIT', 5000.00, 'Entrance / Registration Fee', '2026-10-18T07:59:24'),
+(345, 166, 7, 'CREDIT', 1000.00, 'Welfare Solidarity Levy', '2026-10-18T07:59:24'),
+(346, 167, 3, 'DEBIT', 50000.00, 'Member Loan Principal Facilities Receivable', '2026-10-18T07:59:33'),
+(347, 167, 1, 'CREDIT', 50000.00, 'Disbursement payout via Polaris Bank Escrow', '2026-10-18T07:59:33'),
+(348, 168, 5, 'DEBIT', 150000.00, 'Member Savings Balance Liquidated', '2026-10-18T07:59:46'),
+(349, 168, 9, 'DEBIT', 25000.00, 'Member Share Capital Liquidated', '2026-10-18T07:59:46'),
+(350, 168, 17, 'CREDIT', 5000.00, 'Membership Exit Administrative Processing Fee', '2026-10-18T07:59:46')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.journal_entry_lines (id, journal_entry_id, account_id, line_type, amount, memo, created_at) VALUES
+(351, 168, 1, 'CREDIT', 170000.00, 'Net Settlement Payout via Polaris Bank', '2026-10-18T07:59:46'),
+(352, 169, 5, 'DEBIT', 50000.00, 'Foreclosure offset from savings for L-WMC-2026-9CDA5F1F', '2026-10-18T07:59:57'),
+(353, 169, 3, 'CREDIT', 50000.00, 'Foreclosure liquidation of loan L-WMC-2026-9CDA5F1F', '2026-10-18T07:59:57'),
+(354, 170, 5, 'DEBIT', 50000.00, 'Foreclosure offset from savings for L-WMC-2026-9CDA5F1F', '2026-10-18T08:00:18'),
+(355, 170, 3, 'CREDIT', 50000.00, 'Foreclosure liquidation of loan L-WMC-2026-9CDA5F1F', '2026-10-18T08:00:18'),
+(356, 171, 1, 'DEBIT', 63895.21, 'Remittance into Polaris Escrow', '2026-10-18T08:00:29'),
+(357, 171, 5, 'CREDIT', 63895.21, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T08:00:29'),
+(358, 172, 1, 'DEBIT', 68728.27, 'Remittance into Polaris Escrow', '2026-10-18T08:00:29'),
+(359, 172, 5, 'CREDIT', 68728.27, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T08:00:29'),
+(360, 173, 1, 'DEBIT', 19562.75, 'Remittance into Polaris Escrow', '2026-10-18T08:00:29'),
+(361, 173, 5, 'CREDIT', 19562.75, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T08:00:29'),
+(362, 174, 1, 'DEBIT', 19562.75, 'Remittance into Polaris Escrow', '2026-10-18T08:00:29'),
+(363, 174, 5, 'CREDIT', 19562.75, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T08:00:29'),
+(364, 175, 1, 'DEBIT', 19562.75, 'Remittance into Polaris Escrow', '2026-10-18T08:00:29'),
+(365, 175, 5, 'CREDIT', 19562.75, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T08:00:29'),
+(366, 176, 1, 'DEBIT', 19562.75, 'Remittance into Polaris Escrow', '2026-10-18T08:00:29'),
+(367, 176, 5, 'CREDIT', 19562.75, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T08:00:29'),
+(368, 177, 1, 'DEBIT', 19562.75, 'Remittance into Polaris Escrow', '2026-10-18T08:00:29'),
+(369, 177, 5, 'CREDIT', 19562.75, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T08:00:29'),
+(370, 178, 1, 'DEBIT', 19562.75, 'Remittance into Polaris Escrow', '2026-10-18T08:00:29'),
+(371, 178, 5, 'CREDIT', 19562.75, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T08:00:29'),
+(372, 179, 1, 'DEBIT', 25000.00, 'Remittance into Polaris Escrow', '2026-10-18T08:00:29'),
+(373, 179, 5, 'CREDIT', 25000.00, 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', '2026-10-18T08:00:29'),
+(374, 180, 1, 'DEBIT', 10000.00, 'Remittance into Polaris Escrow', '2026-10-18T08:00:29'),
+(375, 180, 5, 'CREDIT', 10000.00, 'Statutory incentive dividend allocation authorized by Board', '2026-10-18T08:00:29'),
+(376, 181, 5, 'DEBIT', 30000.00, 'Foreclosure offset against defaulted loan L-WMC-2026-9CDA5F1F', '2026-10-18T08:00:29'),
+(377, 181, 1, 'CREDIT', 30000.00, 'Payout from Polaris Escrow', '2026-10-18T08:00:29'),
+(378, 182, 5, 'DEBIT', 20000.00, 'Guarantor collateral foreclosure offset for Olaleke Olaoye (L-WMC-2026-9CDA5F1F)', '2026-10-18T08:00:29'),
+(379, 182, 1, 'CREDIT', 20000.00, 'Payout from Polaris Escrow', '2026-10-18T08:00:29'),
+(380, 183, 5, 'DEBIT', 30000.00, 'Foreclosure offset against defaulted loan L-WMC-2026-9CDA5F1F', '2026-10-18T08:00:29'),
+(381, 183, 1, 'CREDIT', 30000.00, 'Payout from Polaris Escrow', '2026-10-18T08:00:29'),
+(382, 184, 5, 'DEBIT', 20000.00, 'Guarantor collateral foreclosure offset for Olaleke Olaoye (L-WMC-2026-9CDA5F1F)', '2026-10-18T08:00:29'),
+(383, 184, 1, 'CREDIT', 20000.00, 'Payout from Polaris Escrow', '2026-10-18T08:00:29'),
+(384, 185, 1, 'DEBIT', 25000.00, 'Polaris Escrow deposit', '2026-10-18T08:00:29'),
+(385, 185, 18, 'CREDIT', 25000.00, 'Sundry operational donation', '2026-10-18T08:00:29'),
+(386, 186, 23, 'DEBIT', 15000.00, 'Cloud Server maintenance fee', '2026-10-18T08:00:29'),
+(387, 186, 1, 'CREDIT', 15000.00, 'Payment from Polaris Bank Escrow', '2026-10-18T08:00:29'),
+(388, 187, 1, 'DEBIT', 57387.25, 'Remittance into Polaris Escrow', '2026-10-18T08:00:42'),
+(389, 187, 5, 'CREDIT', 57387.25, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T08:00:42'),
+(390, 188, 1, 'DEBIT', 67759.48, 'Remittance into Polaris Escrow', '2026-10-18T08:00:42'),
+(391, 188, 5, 'CREDIT', 67759.48, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T08:00:42'),
+(392, 189, 1, 'DEBIT', 20808.88, 'Remittance into Polaris Escrow', '2026-10-18T08:00:42'),
+(393, 189, 5, 'CREDIT', 20808.88, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T08:00:42'),
+(394, 190, 1, 'DEBIT', 20808.88, 'Remittance into Polaris Escrow', '2026-10-18T08:00:42'),
+(395, 190, 5, 'CREDIT', 20808.88, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T08:00:42'),
+(396, 191, 1, 'DEBIT', 20808.88, 'Remittance into Polaris Escrow', '2026-10-18T08:00:42'),
+(397, 191, 5, 'CREDIT', 20808.88, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T08:00:42'),
+(398, 192, 1, 'DEBIT', 20808.88, 'Remittance into Polaris Escrow', '2026-10-18T08:00:42'),
+(399, 192, 5, 'CREDIT', 20808.88, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T08:00:42'),
+(400, 193, 1, 'DEBIT', 20808.88, 'Remittance into Polaris Escrow', '2026-10-18T08:00:42')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.journal_entry_lines (id, journal_entry_id, account_id, line_type, amount, memo, created_at) VALUES
+(401, 193, 5, 'CREDIT', 20808.88, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T08:00:42'),
+(402, 194, 1, 'DEBIT', 20808.88, 'Remittance into Polaris Escrow', '2026-10-18T08:00:42'),
+(403, 194, 5, 'CREDIT', 20808.88, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T08:00:42'),
+(404, 195, 1, 'DEBIT', 25000.00, 'Polaris Escrow deposit', '2026-10-18T08:00:42'),
+(405, 195, 18, 'CREDIT', 25000.00, 'Sundry operational donation', '2026-10-18T08:00:42'),
+(406, 196, 23, 'DEBIT', 15000.00, 'Cloud Server maintenance fee', '2026-10-18T08:00:42'),
+(407, 196, 1, 'CREDIT', 15000.00, 'Payment from Polaris Bank Escrow', '2026-10-18T08:00:42'),
+(408, 197, 3, 'DEBIT', 60000.00, 'Member Loan Principal Facilities Receivable', '2026-10-18T08:00:44'),
+(409, 197, 1, 'CREDIT', 60000.00, 'Disbursement payout via Polaris Bank Escrow', '2026-10-18T08:00:44'),
+(410, 198, 3, 'DEBIT', 50000.00, 'Member Loan Principal Facilities Receivable', '2026-10-18T08:00:44'),
+(411, 198, 1, 'CREDIT', 50000.00, 'Disbursement payout via Polaris Bank Escrow', '2026-10-18T08:00:44'),
+(412, 199, 1, 'DEBIT', 25000.00, 'Member Remittance - Adv #WMC-ADV-202610-0002', '2026-10-18T08:00:45'),
+(413, 199, 5, 'CREDIT', 25000.00, 'Regular Savings Deposit', '2026-10-18T08:00:45'),
+(414, 200, 1, 'DEBIT', 6000.00, 'Member Remittance - Adv #WMC-ADV-202610-10014', '2026-10-18T08:00:47'),
+(415, 200, 14, 'CREDIT', 5000.00, 'Entrance / Registration Fee', '2026-10-18T08:00:47'),
+(416, 200, 7, 'CREDIT', 1000.00, 'Welfare Solidarity Levy', '2026-10-18T08:00:47'),
+(417, 201, 3, 'DEBIT', 50000.00, 'Member Loan Principal Facilities Receivable', '2026-10-18T08:00:49'),
+(418, 201, 1, 'CREDIT', 50000.00, 'Disbursement payout via Polaris Bank Escrow', '2026-10-18T08:00:49'),
+(419, 202, 5, 'DEBIT', 150000.00, 'Member Savings Balance Liquidated', '2026-10-18T08:00:55'),
+(420, 202, 9, 'DEBIT', 25000.00, 'Member Share Capital Liquidated', '2026-10-18T08:00:55'),
+(421, 202, 17, 'CREDIT', 5000.00, 'Membership Exit Administrative Processing Fee', '2026-10-18T08:00:55'),
+(422, 202, 1, 'CREDIT', 170000.00, 'Net Settlement Payout via Polaris Bank', '2026-10-18T08:00:55'),
+(423, 203, 5, 'DEBIT', 50000.00, 'Foreclosure offset from savings for L-WMC-2026-3EB551D4', '2026-10-18T08:00:58'),
+(424, 203, 3, 'CREDIT', 50000.00, 'Foreclosure liquidation of loan L-WMC-2026-3EB551D4', '2026-10-18T08:00:58'),
+(425, 204, 1, 'DEBIT', 55797.93, 'Remittance into Polaris Escrow', '2026-10-18T08:02:10'),
+(426, 204, 5, 'CREDIT', 55797.93, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T08:02:10'),
+(427, 205, 1, 'DEBIT', 65409.56, 'Remittance into Polaris Escrow', '2026-10-18T08:02:10'),
+(428, 205, 5, 'CREDIT', 65409.56, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T08:02:10'),
+(429, 206, 1, 'DEBIT', 21465.42, 'Remittance into Polaris Escrow', '2026-10-18T08:02:10'),
+(430, 206, 5, 'CREDIT', 21465.42, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T08:02:10'),
+(431, 207, 1, 'DEBIT', 21465.42, 'Remittance into Polaris Escrow', '2026-10-18T08:02:10'),
+(432, 207, 5, 'CREDIT', 21465.42, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T08:02:10'),
+(433, 208, 1, 'DEBIT', 21465.42, 'Remittance into Polaris Escrow', '2026-10-18T08:02:10'),
+(434, 208, 5, 'CREDIT', 21465.42, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T08:02:10'),
+(435, 209, 1, 'DEBIT', 21465.42, 'Remittance into Polaris Escrow', '2026-10-18T08:02:10'),
+(436, 209, 5, 'CREDIT', 21465.42, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T08:02:10'),
+(437, 210, 1, 'DEBIT', 21465.42, 'Remittance into Polaris Escrow', '2026-10-18T08:02:10'),
+(438, 210, 5, 'CREDIT', 21465.42, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T08:02:10'),
+(439, 211, 1, 'DEBIT', 21465.42, 'Remittance into Polaris Escrow', '2026-10-18T08:02:10'),
+(440, 211, 5, 'CREDIT', 21465.42, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-18T08:02:10'),
+(441, 212, 1, 'DEBIT', 25000.00, 'Remittance into Polaris Escrow', '2026-10-18T08:02:10'),
+(442, 212, 5, 'CREDIT', 25000.00, 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', '2026-10-18T08:02:10'),
+(443, 213, 1, 'DEBIT', 10000.00, 'Remittance into Polaris Escrow', '2026-10-18T08:02:10'),
+(444, 213, 5, 'CREDIT', 10000.00, 'Statutory incentive dividend allocation authorized by Board', '2026-10-18T08:02:10'),
+(445, 214, 5, 'DEBIT', 30000.00, 'Foreclosure offset against defaulted loan L-WMC-2026-3EB551D4', '2026-10-18T08:02:10'),
+(446, 214, 1, 'CREDIT', 30000.00, 'Payout from Polaris Escrow', '2026-10-18T08:02:10'),
+(447, 215, 5, 'DEBIT', 20000.00, 'Guarantor collateral foreclosure offset for Olaleke Olaoye (L-WMC-2026-3EB551D4)', '2026-10-18T08:02:10'),
+(448, 215, 1, 'CREDIT', 20000.00, 'Payout from Polaris Escrow', '2026-10-18T08:02:10'),
+(449, 216, 1, 'DEBIT', 25000.00, 'Polaris Escrow deposit', '2026-10-18T08:02:10'),
+(450, 216, 18, 'CREDIT', 25000.00, 'Sundry operational donation', '2026-10-18T08:02:10')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.journal_entry_lines (id, journal_entry_id, account_id, line_type, amount, memo, created_at) VALUES
+(451, 217, 23, 'DEBIT', 15000.00, 'Cloud Server maintenance fee', '2026-10-18T08:02:10'),
+(452, 217, 1, 'CREDIT', 15000.00, 'Payment from Polaris Bank Escrow', '2026-10-18T08:02:10'),
+(453, 218, 12, 'DEBIT', 499999.98, 'Retained Surplus Allocated for FY2026 Official Dividend Run', '2026-10-18T08:02:11'),
+(454, 218, 10, 'CREDIT', 250000.00, 'Statutory Reserve Fund 50% Allocation (Cap C15)', '2026-10-18T08:02:11'),
+(455, 218, 5, 'CREDIT', 249999.98, 'Member Regular Savings Dividend Payouts', '2026-10-18T08:02:11'),
+(456, 219, 5, 'DEBIT', 50000.00, 'Foreclosure offset from savings for L-WMC-2026-3EB551D4', '2026-10-18T08:02:18'),
+(457, 219, 3, 'CREDIT', 50000.00, 'Foreclosure liquidation of loan L-WMC-2026-3EB551D4', '2026-10-18T08:02:18'),
+(458, 220, 3, 'DEBIT', 60000.00, 'Member Loan Principal Facilities Receivable', '2026-10-18T08:02:25'),
+(459, 220, 1, 'CREDIT', 60000.00, 'Disbursement payout via Polaris Bank Escrow', '2026-10-18T08:02:25'),
+(460, 221, 3, 'DEBIT', 50000.00, 'Member Loan Principal Facilities Receivable', '2026-10-18T08:02:26'),
+(461, 221, 1, 'CREDIT', 50000.00, 'Disbursement payout via Polaris Bank Escrow', '2026-10-18T08:02:26'),
+(462, 222, 1, 'DEBIT', 25000.00, 'Member Remittance - Adv #WMC-ADV-202610-0002', '2026-10-18T08:02:26'),
+(463, 222, 5, 'CREDIT', 25000.00, 'Regular Savings Deposit', '2026-10-18T08:02:26'),
+(464, 223, 1, 'DEBIT', 6000.00, 'Member Remittance - Adv #WMC-ADV-202610-10018', '2026-10-18T08:02:31'),
+(465, 223, 14, 'CREDIT', 5000.00, 'Entrance / Registration Fee', '2026-10-18T08:02:31'),
+(466, 223, 7, 'CREDIT', 1000.00, 'Welfare Solidarity Levy', '2026-10-18T08:02:31'),
+(467, 224, 3, 'DEBIT', 50000.00, 'Member Loan Principal Facilities Receivable', '2026-10-18T08:02:35'),
+(468, 224, 1, 'CREDIT', 50000.00, 'Disbursement payout via Polaris Bank Escrow', '2026-10-18T08:02:35'),
+(469, 225, 5, 'DEBIT', 150000.00, 'Member Savings Balance Liquidated', '2026-10-18T08:02:44'),
+(470, 225, 9, 'DEBIT', 25000.00, 'Member Share Capital Liquidated', '2026-10-18T08:02:44'),
+(471, 225, 17, 'CREDIT', 5000.00, 'Membership Exit Administrative Processing Fee', '2026-10-18T08:02:44'),
+(472, 225, 1, 'CREDIT', 170000.00, 'Net Settlement Payout via Polaris Bank', '2026-10-18T08:02:44'),
+(473, 226, 5, 'DEBIT', 30000.00, 'Foreclosure offset from savings for L-WMC-2026-3EB551D4', '2026-10-18T08:15:01'),
+(474, 226, 3, 'CREDIT', 30000.00, 'Foreclosure liquidation of loan L-WMC-2026-3EB551D4', '2026-10-18T08:15:01'),
+(475, 227, 3, 'DEBIT', 50000.00, 'Member Loan Principal Facilities Receivable', '2026-10-18T08:15:29'),
+(476, 227, 1, 'CREDIT', 50000.00, 'Disbursement payout via Polaris Bank Escrow', '2026-10-18T08:15:29'),
+(477, 228, 3, 'DEBIT', 35000.00, 'Member Loan Principal Facilities Receivable', '2026-10-18T08:15:35'),
+(478, 228, 1, 'CREDIT', 35000.00, 'Disbursement payout via Polaris Bank Escrow', '2026-10-18T08:15:35'),
+(479, 229, 3, 'DEBIT', 60000.00, 'Member Loan Principal Facilities Receivable', '2026-10-18T08:26:15'),
+(480, 229, 1, 'CREDIT', 60000.00, 'Disbursement payout via Polaris Bank Escrow', '2026-10-18T08:26:15'),
+(481, 230, 3, 'DEBIT', 50000.00, 'Member Loan Principal Facilities Receivable', '2026-10-18T08:26:16'),
+(482, 230, 1, 'CREDIT', 50000.00, 'Disbursement payout via Polaris Bank Escrow', '2026-10-18T08:26:16'),
+(483, 231, 1, 'DEBIT', 25000.00, 'Member Remittance - Adv #WMC-ADV-202610-0002', '2026-10-18T08:26:16'),
+(484, 231, 5, 'CREDIT', 25000.00, 'Regular Savings Deposit', '2026-10-18T08:26:16'),
+(485, 232, 5, 'DEBIT', 50000.00, 'Foreclosure offset from savings for L-WMC-2026-14744738', '2026-10-18T08:26:48'),
+(486, 232, 3, 'CREDIT', 50000.00, 'Foreclosure liquidation of loan L-WMC-2026-14744738', '2026-10-18T08:26:48'),
+(487, 233, 3, 'DEBIT', 60000.00, 'Member Loan Principal Facilities Receivable', '2026-10-18T08:57:00'),
+(488, 233, 1, 'CREDIT', 60000.00, 'Disbursement payout via Polaris Bank Escrow', '2026-10-18T08:57:00'),
+(489, 234, 3, 'DEBIT', 50000.00, 'Member Loan Principal Facilities Receivable', '2026-10-18T08:57:01'),
+(490, 234, 1, 'CREDIT', 50000.00, 'Disbursement payout via Polaris Bank Escrow', '2026-10-18T08:57:01'),
+(491, 235, 1, 'DEBIT', 25000.00, 'Member Remittance - Adv #WMC-ADV-202610-0002', '2026-10-18T08:57:01'),
+(492, 235, 5, 'CREDIT', 25000.00, 'Regular Savings Deposit', '2026-10-18T08:57:01'),
+(493, 236, 5, 'DEBIT', 50000.00, 'Foreclosure offset from savings for L-WMC-2026-A30ED407', '2026-10-18T08:57:12'),
+(494, 236, 3, 'CREDIT', 50000.00, 'Foreclosure liquidation of loan L-WMC-2026-A30ED407', '2026-10-18T08:57:12'),
+(495, 237, 1, 'DEBIT', 50004.55, 'Remittance into Polaris Escrow', '2026-10-25T14:45:09'),
+(496, 237, 5, 'CREDIT', 50004.55, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-25T14:45:09'),
+(497, 238, 1, 'DEBIT', 66002.41, 'Remittance into Polaris Escrow', '2026-10-25T14:45:09'),
+(498, 238, 5, 'CREDIT', 66002.41, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-25T14:45:09'),
+(499, 239, 1, 'DEBIT', 22332.17, 'Remittance into Polaris Escrow', '2026-10-25T14:45:09'),
+(500, 239, 5, 'CREDIT', 22332.17, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-25T14:45:09')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.journal_entry_lines (id, journal_entry_id, account_id, line_type, amount, memo, created_at) VALUES
+(501, 240, 1, 'DEBIT', 22332.17, 'Remittance into Polaris Escrow', '2026-10-25T14:45:09'),
+(502, 240, 5, 'CREDIT', 22332.17, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-25T14:45:09'),
+(503, 241, 1, 'DEBIT', 22332.17, 'Remittance into Polaris Escrow', '2026-10-25T14:45:09'),
+(504, 241, 5, 'CREDIT', 22332.17, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-25T14:45:09'),
+(505, 242, 1, 'DEBIT', 22332.17, 'Remittance into Polaris Escrow', '2026-10-25T14:45:09'),
+(506, 242, 5, 'CREDIT', 22332.17, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-25T14:45:09'),
+(507, 243, 1, 'DEBIT', 22332.17, 'Remittance into Polaris Escrow', '2026-10-25T14:45:09'),
+(508, 243, 5, 'CREDIT', 22332.17, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-25T14:45:09'),
+(509, 244, 1, 'DEBIT', 22332.17, 'Remittance into Polaris Escrow', '2026-10-25T14:45:09'),
+(510, 244, 5, 'CREDIT', 22332.17, 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', '2026-10-25T14:45:09'),
+(511, 245, 5, 'DEBIT', 30000.00, 'Foreclosure offset against defaulted loan L-WMC-2026-3EB551D4', '2026-10-25T14:45:10'),
+(512, 245, 1, 'CREDIT', 30000.00, 'Payout from Polaris Escrow', '2026-10-25T14:45:10'),
+(513, 246, 5, 'DEBIT', 20000.00, 'Guarantor collateral foreclosure offset for Olaleke Olaoye (L-WMC-2026-3EB551D4)', '2026-10-25T14:45:10'),
+(514, 246, 1, 'CREDIT', 20000.00, 'Payout from Polaris Escrow', '2026-10-25T14:45:10'),
+(515, 247, 1, 'DEBIT', 25000.00, 'Remittance into Polaris Escrow', '2026-10-25T14:45:10'),
+(516, 247, 5, 'CREDIT', 25000.00, 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', '2026-10-25T14:45:10'),
+(517, 248, 1, 'DEBIT', 10000.00, 'Remittance into Polaris Escrow', '2026-10-25T14:45:10'),
+(518, 248, 5, 'CREDIT', 10000.00, 'Statutory incentive dividend allocation authorized by Board', '2026-10-25T14:45:10'),
+(519, 249, 5, 'DEBIT', 30000.00, 'Guarantor collateral foreclosure offset for Olaleke Olaoye (L-WMC-2026-3EB551D4)', '2026-10-25T14:45:10'),
+(520, 249, 1, 'CREDIT', 30000.00, 'Payout from Polaris Escrow', '2026-10-25T14:45:10'),
+(521, 250, 1, 'DEBIT', 25000.00, 'Remittance into Polaris Escrow', '2026-10-25T14:45:10'),
+(522, 250, 5, 'CREDIT', 25000.00, 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', '2026-10-25T14:45:10'),
+(523, 251, 1, 'DEBIT', 10000.00, 'Remittance into Polaris Escrow', '2026-10-25T14:45:10'),
+(524, 251, 5, 'CREDIT', 10000.00, 'Statutory incentive dividend allocation authorized by Board', '2026-10-25T14:45:10'),
+(525, 252, 5, 'DEBIT', 30000.00, 'Foreclosure offset against defaulted loan L-WMC-2026-14744738', '2026-10-25T14:45:10'),
+(526, 252, 1, 'CREDIT', 30000.00, 'Payout from Polaris Escrow', '2026-10-25T14:45:10'),
+(527, 253, 5, 'DEBIT', 20000.00, 'Guarantor collateral foreclosure offset for Olaleke Olaoye (L-WMC-2026-14744738)', '2026-10-25T14:45:10'),
+(528, 253, 1, 'CREDIT', 20000.00, 'Payout from Polaris Escrow', '2026-10-25T14:45:10'),
+(529, 254, 1, 'DEBIT', 25000.00, 'Remittance into Polaris Escrow', '2026-10-25T14:45:10'),
+(530, 254, 5, 'CREDIT', 25000.00, 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', '2026-10-25T14:45:10'),
+(531, 255, 1, 'DEBIT', 10000.00, 'Remittance into Polaris Escrow', '2026-10-25T14:45:10'),
+(532, 255, 5, 'CREDIT', 10000.00, 'Statutory incentive dividend allocation authorized by Board', '2026-10-25T14:45:10'),
+(533, 256, 5, 'DEBIT', 30000.00, 'Foreclosure offset against defaulted loan L-WMC-2026-A30ED407', '2026-10-25T14:45:10'),
+(534, 256, 1, 'CREDIT', 30000.00, 'Payout from Polaris Escrow', '2026-10-25T14:45:10'),
+(535, 257, 5, 'DEBIT', 20000.00, 'Guarantor collateral foreclosure offset for Olaleke Olaoye (L-WMC-2026-A30ED407)', '2026-10-25T14:45:10'),
+(536, 257, 1, 'CREDIT', 20000.00, 'Payout from Polaris Escrow', '2026-10-25T14:45:10'),
+(537, 258, 1, 'DEBIT', 25000.00, 'Polaris Escrow deposit', '2026-10-25T14:45:10'),
+(538, 258, 18, 'CREDIT', 25000.00, 'Sundry operational donation', '2026-10-25T14:45:10'),
+(539, 259, 23, 'DEBIT', 15000.00, 'Cloud Server maintenance fee', '2026-10-25T14:45:10'),
+(540, 259, 1, 'CREDIT', 15000.00, 'Payment from Polaris Bank Escrow', '2026-10-25T14:45:10'),
+(541, 260, 12, 'DEBIT', 499999.98, 'Retained Surplus Allocated for FY2026 Official Dividend Run', '2026-10-25T14:45:11'),
+(542, 260, 10, 'CREDIT', 250000.00, 'Statutory Reserve Fund 50% Allocation (Cap C15)', '2026-10-25T14:45:11'),
+(543, 260, 5, 'CREDIT', 249999.98, 'Member Regular Savings Dividend Payouts', '2026-10-25T14:45:11')
+ON CONFLICT DO NOTHING;
+
+SELECT setval(pg_get_serial_sequence('public.journal_entry_lines', 'id'), COALESCE((SELECT MAX(id) FROM public.journal_entry_lines), 1), true);
+
+-- ---------------------------------------------------------------------
+-- Table: savings_accounts (11 records)
+-- ---------------------------------------------------------------------
+INSERT INTO public.savings_accounts (id, member_id, total_balance, encumbered_balance, last_updated) VALUES
+(1, 1, 474316.75, 0.00, '2026-10-25T14:45:11'),
+(2, 2, 866946.35, 0.00, '2026-10-25T14:45:11'),
+(3, 3, 156689.12, 0.00, '2026-10-25T14:45:11'),
+(4, 4, 156689.12, 0.00, '2026-10-25T14:45:11'),
+(5, 5, 156689.12, 0.00, '2026-10-25T14:45:11'),
+(6, 6, 156689.12, 0.00, '2026-10-25T14:45:11'),
+(7, 7, 156689.12, 0.00, '2026-10-25T14:45:11'),
+(8, 8, 156689.12, 0.00, '2026-10-25T14:45:11'),
+(26, 14, 0.00, 0.00, '2026-10-15T13:56:26'),
+(32, 15, 0.00, 0.00, '2026-10-17T08:24:12'),
+(39, 16, 0.00, 0.00, '2026-10-17T12:29:30')
+ON CONFLICT DO NOTHING;
+
+SELECT setval(pg_get_serial_sequence('public.savings_accounts', 'id'), COALESCE((SELECT MAX(id) FROM public.savings_accounts), 1), true);
+
+-- ---------------------------------------------------------------------
+-- Table: share_accounts (11 records)
+-- ---------------------------------------------------------------------
+INSERT INTO public.share_accounts (id, member_id, units_held, paid_up_amount, is_minimum_met, benefits_qualified, last_updated) VALUES
+(1, 1, 6, 6000.00, TRUE, TRUE, '2026-10-15T13:32:55'),
+(2, 2, 6, 6000.00, TRUE, TRUE, '2026-10-17T12:15:55'),
+(3, 3, 5, 5000.00, TRUE, TRUE, '2026-10-14T22:00:54'),
+(4, 4, 5, 5000.00, TRUE, TRUE, '2026-10-14T22:00:54'),
+(5, 5, 5, 5000.00, TRUE, TRUE, '2026-10-14T22:00:54'),
+(6, 6, 5, 5000.00, TRUE, TRUE, '2026-10-14T22:00:54'),
+(7, 7, 5, 5000.00, TRUE, TRUE, '2026-10-14T22:00:54'),
+(8, 8, 5, 5000.00, TRUE, TRUE, '2026-10-14T22:00:54'),
+(15, 14, 0, 0.00, FALSE, FALSE, '2026-10-15T13:56:26'),
+(16, 15, 0, 0.00, FALSE, FALSE, '2026-10-17T08:24:12'),
+(18, 16, 0, 0.00, FALSE, FALSE, '2026-10-17T12:29:30')
+ON CONFLICT DO NOTHING;
+
+SELECT setval(pg_get_serial_sequence('public.share_accounts', 'id'), COALESCE((SELECT MAX(id) FROM public.share_accounts), 1), true);
+
+-- ---------------------------------------------------------------------
+-- Table: welfare_accounts (11 records)
+-- ---------------------------------------------------------------------
+INSERT INTO public.welfare_accounts (id, member_id, cumulative_contributions, consecutive_months_active, last_contribution_date, last_updated) VALUES
+(1, 1, 1000.00, 2, '2026-10-15', '2026-10-15T13:32:55'),
+(2, 2, 1000.00, 2, '2026-10-17', '2026-10-17T12:15:55'),
+(3, 3, 0.00, 1, '2026-09-26', '2026-10-14T22:00:54'),
+(4, 4, 0.00, 1, '2026-09-26', '2026-10-14T22:00:54'),
+(5, 5, 0.00, 1, '2026-09-26', '2026-10-14T22:00:54'),
+(6, 6, 0.00, 1, '2026-09-26', '2026-10-14T22:00:54'),
+(7, 7, 0.00, 1, '2026-09-26', '2026-10-14T22:00:54'),
+(8, 8, 0.00, 1, '2026-09-26', '2026-10-14T22:00:54'),
+(15, 14, 0.00, 0, NULL, '2026-10-15T13:56:26'),
+(16, 15, 0.00, 0, NULL, '2026-10-17T08:24:12'),
+(18, 16, 0.00, 0, NULL, '2026-10-17T12:29:30')
+ON CONFLICT DO NOTHING;
+
+SELECT setval(pg_get_serial_sequence('public.welfare_accounts', 'id'), COALESCE((SELECT MAX(id) FROM public.welfare_accounts), 1), true);
+
+-- ---------------------------------------------------------------------
+-- Table: target_savings_accounts (10 records)
+-- ---------------------------------------------------------------------
+INSERT INTO public.target_savings_accounts (id, member_id, target_type, title, target_amount, current_balance, start_date, maturity_date, auto_save_amount, status, created_at, updated_at) VALUES
+(2, 1, 'BUILDING', 'Ibeju-Lekki Estate Land Target', 5000000.00, 750000.00, '2026-09-26', '2027-09-30', 0.00, 'ACTIVE', '2026-10-14T22:01:50', '2026-10-14T22:01:50'),
+(3, 1, 'ILEYA', '2027 Ileya Ram & Family Feast Target', 350000.00, 120000.00, '2026-10-01', '2027-06-01', 0.00, 'ACTIVE', '2026-10-14T22:01:50', '2026-10-14T22:01:50'),
+(4, 2, 'EDUCATION', 'Postgraduate Tuition & Professional Certs', 800000.00, 250000.00, '2026-10-01', '2027-03-31', 0.00, 'ACTIVE', '2026-10-14T22:01:50', '2026-10-14T22:01:50'),
+(5, 3, 'PILGRIMAGE', 'Holy Pilgrimage to Makkah (Hajj 2027)', 2500000.00, 450000.00, '2026-10-01', '2027-05-15', 0.00, 'ACTIVE', '2026-10-14T22:01:50', '2026-10-14T22:01:50'),
+(6, 4, 'CHRISTMAS', '2026 End of Year Family Celebration', 200000.00, 200000.00, '2026-01-01', '2026-10-10', 0.00, 'MATURED', '2026-10-14T22:01:50', '2026-10-14T22:01:50'),
+(7, 1, 'BIRTHDAY', '40th Milestone Birthday Celebration Target', 600000.00, 0.00, '2026-10-14', '2026-10-13', 25000.00, 'WITHDRAWN', '2026-10-14T22:48:18', '2026-10-14T22:48:18'),
+(8, 1, 'EDUCATION', 'Harvard Executive Leadership Certificate', 750000.00, 150000.00, '2026-10-14', '2027-01-12', 0.00, 'ACTIVE', '2026-10-14T22:50:44', '2026-10-14T22:50:44'),
+(9, 1, 'BIRTHDAY', '40th Milestone Birthday Celebration Target', 600000.00, 0.00, '2026-10-14', '2026-10-13', 25000.00, 'WITHDRAWN', '2026-10-14T23:41:28', '2026-10-14T23:41:28'),
+(10, 1, 'BIRTHDAY', '40th Milestone Birthday Celebration Target', 600000.00, 0.00, '2026-10-15', '2026-10-14', 25000.00, 'WITHDRAWN', '2026-10-15T13:43:02', '2026-10-15T13:43:02'),
+(11, 1, 'BIRTHDAY', '40th Milestone Birthday Celebration Target', 600000.00, 0.00, '2026-10-16', '2026-10-15', 25000.00, 'WITHDRAWN', '2026-10-16T11:20:29', '2026-10-16T11:20:29')
+ON CONFLICT DO NOTHING;
+
+SELECT setval(pg_get_serial_sequence('public.target_savings_accounts', 'id'), COALESCE((SELECT MAX(id) FROM public.target_savings_accounts), 1), true);
+
+-- ---------------------------------------------------------------------
+-- Table: target_savings_transactions (23 records)
+-- ---------------------------------------------------------------------
+INSERT INTO public.target_savings_transactions (id, target_account_id, member_id, transaction_type, amount, balance_after, payment_method, channel_reference, narration, created_at) VALUES
+(1, 2, 1, 'DEPOSIT', 750000.00, 750000.00, 'POLARIS_BANK_TRANSFER', 'TS-DEP-INIT-2-2026', 'Initial allocation for Ibeju-Lekki Estate Land Target', '2026-10-14T22:01:50'),
+(2, 3, 1, 'DEPOSIT', 120000.00, 120000.00, 'POLARIS_BANK_TRANSFER', 'TS-DEP-INIT-3-2026', 'Initial allocation for 2027 Ileya Ram & Family Feast Target', '2026-10-14T22:01:50'),
+(3, 4, 2, 'DEPOSIT', 250000.00, 250000.00, 'POLARIS_BANK_TRANSFER', 'TS-DEP-INIT-4-2026', 'Initial allocation for Postgraduate Tuition & Professional Certs', '2026-10-14T22:01:50'),
+(4, 5, 3, 'DEPOSIT', 450000.00, 450000.00, 'POLARIS_BANK_TRANSFER', 'TS-DEP-INIT-5-2026', 'Initial allocation for Holy Pilgrimage to Makkah (Hajj 2027)', '2026-10-14T22:01:50'),
+(5, 6, 4, 'DEPOSIT', 200000.00, 200000.00, 'POLARIS_BANK_TRANSFER', 'TS-DEP-INIT-6-2026', 'Initial allocation for 2026 End of Year Family Celebration', '2026-10-14T22:01:50'),
+(6, 7, 1, 'DEPOSIT', 50000.00, 50000.00, 'POLARIS_BANK_TRANSFER', 'TS-DEP-INIT-7-1792014498', 'Initial deposit for 40th Milestone Birthday Celebration Target', '2026-10-14T22:48:18'),
+(7, 7, 1, 'DEPOSIT', 75000.00, 125000.00, 'POLARIS_BANK_TRANSFER', 'TS-DEP-7-1792014498', 'Monthly bonus top-up for 40th Birthday', '2026-10-14T22:48:18'),
+(8, 7, 1, 'WITHDRAWAL', 50000.00, 75000.00, 'POLARIS_BANK_TRANSFER', 'TS-WDR-7-1792014498', 'Maturity Payout for 40th Milestone Birthday Celebration Target to Polaris Bank Limited 1140029381', '2026-10-14T22:48:18'),
+(9, 7, 1, 'WITHDRAWAL', 75000.00, 0.00, 'POLARIS_BANK_TRANSFER', 'TS-WDR-7-1792014498', 'Maturity Payout for 40th Milestone Birthday Celebration Target to Polaris Bank Limited 1140029381', '2026-10-14T22:48:18'),
+(10, 8, 1, 'DEPOSIT', 100000.00, 100000.00, 'POLARIS_BANK_TRANSFER', 'TS-DEP-INIT-8-1792014644', 'Initial deposit for Harvard Executive Leadership Certificate', '2026-10-14T22:50:44'),
+(11, 8, 1, 'DEPOSIT', 50000.00, 150000.00, 'POLARIS_BANK_TRANSFER', 'TS-DEP-8-1792014644', 'Quarterly allocation', '2026-10-14T22:50:44'),
+(12, 9, 1, 'DEPOSIT', 50000.00, 50000.00, 'POLARIS_BANK_TRANSFER', 'TS-DEP-INIT-9-1792017688', 'Initial deposit for 40th Milestone Birthday Celebration Target', '2026-10-14T23:41:28'),
+(13, 9, 1, 'DEPOSIT', 75000.00, 125000.00, 'POLARIS_BANK_TRANSFER', 'TS-DEP-9-1792017688', 'Monthly bonus top-up for 40th Birthday', '2026-10-14T23:41:28'),
+(14, 9, 1, 'WITHDRAWAL', 50000.00, 75000.00, 'POLARIS_BANK_TRANSFER', 'TS-WDR-9-1792017688', 'Maturity Payout for 40th Milestone Birthday Celebration Target to Polaris Bank Limited 1140029381', '2026-10-14T23:41:28'),
+(15, 9, 1, 'WITHDRAWAL', 75000.00, 0.00, 'POLARIS_BANK_TRANSFER', 'TS-WDR-9-1792017688', 'Maturity Payout for 40th Milestone Birthday Celebration Target to Polaris Bank Limited 1140029381', '2026-10-14T23:41:28'),
+(16, 10, 1, 'DEPOSIT', 50000.00, 50000.00, 'POLARIS_BANK_TRANSFER', 'TS-DEP-INIT-10-1792068182', 'Initial deposit for 40th Milestone Birthday Celebration Target', '2026-10-15T13:43:02'),
+(17, 10, 1, 'DEPOSIT', 75000.00, 125000.00, 'POLARIS_BANK_TRANSFER', 'TS-DEP-10-1792068182', 'Monthly bonus top-up for 40th Birthday', '2026-10-15T13:43:02'),
+(18, 10, 1, 'WITHDRAWAL', 50000.00, 75000.00, 'POLARIS_BANK_TRANSFER', 'TS-WDR-10-1792068182', 'Maturity Payout for 40th Milestone Birthday Celebration Target to Polaris Bank Limited 1140029381', '2026-10-15T13:43:02'),
+(19, 10, 1, 'WITHDRAWAL', 75000.00, 0.00, 'POLARIS_BANK_TRANSFER', 'TS-WDR-10-1792068182', 'Maturity Payout for 40th Milestone Birthday Celebration Target to Polaris Bank Limited 1140029381', '2026-10-15T13:43:02'),
+(20, 11, 1, 'DEPOSIT', 50000.00, 50000.00, 'POLARIS_BANK_TRANSFER', 'TS-DEP-INIT-11-1792146029', 'Initial deposit for 40th Milestone Birthday Celebration Target', '2026-10-16T11:20:29'),
+(21, 11, 1, 'DEPOSIT', 75000.00, 125000.00, 'POLARIS_BANK_TRANSFER', 'TS-DEP-11-1792146029', 'Monthly bonus top-up for 40th Birthday', '2026-10-16T11:20:29'),
+(22, 11, 1, 'WITHDRAWAL', 50000.00, 75000.00, 'POLARIS_BANK_TRANSFER', 'TS-WDR-11-1792146029', 'Maturity Payout for 40th Milestone Birthday Celebration Target to Polaris Bank Limited 1140029381', '2026-10-16T11:20:29'),
+(23, 11, 1, 'WITHDRAWAL', 75000.00, 0.00, 'POLARIS_BANK_TRANSFER', 'TS-WDR-11-1792146029', 'Maturity Payout for 40th Milestone Birthday Celebration Target to Polaris Bank Limited 1140029381', '2026-10-16T11:20:29')
+ON CONFLICT DO NOTHING;
+
+SELECT setval(pg_get_serial_sequence('public.target_savings_transactions', 'id'), COALESCE((SELECT MAX(id) FROM public.target_savings_transactions), 1), true);
+
+-- ---------------------------------------------------------------------
+-- Table: transactions (221 records)
+-- ---------------------------------------------------------------------
+INSERT INTO public.transactions (id, transaction_ref, member_id, transaction_type, ledger_category, amount, payment_method, channel_reference, narration, status, verified_by_officer_id, transaction_date, created_at) VALUES
+(1, 'TX-TSD-1792014498325-DE0C7BB8', 1, 'CREDIT', 'SAVINGS', 50000.00, 'POLARIS_BANK_TRANSFER', 'TS-DEP-INIT-7-1792014498', 'Initial deposit for 40th Milestone Birthday Celebration Target', 'VERIFIED', NULL, '2026-10-14T22:48:18', '2026-10-14T22:48:18'),
+(2, 'TX-TSD-1792014498460-85568BB8', 1, 'CREDIT', 'SAVINGS', 75000.00, 'POLARIS_BANK_TRANSFER', 'TS-DEP-7-1792014498', 'Monthly bonus top-up for 40th Birthday', 'VERIFIED', NULL, '2026-10-14T22:48:18', '2026-10-14T22:48:18'),
+(3, 'TX-TSW-1792014498674-6A57428F', 1, 'DEBIT', 'SAVINGS', 50000.00, 'POLARIS_BANK_TRANSFER', 'TS-WDR-7-1792014498', 'Maturity Payout for 40th Milestone Birthday Celebration Target to Polaris Bank Limited 1140029381', 'VERIFIED', NULL, '2026-10-14T22:48:18', '2026-10-14T22:48:18'),
+(4, 'TX-TSW-1792014498744-726C5824', 1, 'DEBIT', 'SAVINGS', 75000.00, 'POLARIS_BANK_TRANSFER', 'TS-WDR-7-1792014498', 'Maturity Payout for 40th Milestone Birthday Celebration Target to Polaris Bank Limited 1140029381', 'VERIFIED', NULL, '2026-10-14T22:48:18', '2026-10-14T22:48:18'),
+(5, 'TX-TSD-1792014644690-1327067D', 1, 'CREDIT', 'SAVINGS', 100000.00, 'POLARIS_BANK_TRANSFER', 'TS-DEP-INIT-8-1792014644', 'Initial deposit for Harvard Executive Leadership Certificate', 'VERIFIED', NULL, '2026-10-14T22:50:44', '2026-10-14T22:50:44'),
+(6, 'TX-TSD-1792014644812-EFBB339A', 1, 'CREDIT', 'SAVINGS', 50000.00, 'POLARIS_BANK_TRANSFER', 'TS-DEP-8-1792014644', 'Quarterly allocation', 'VERIFIED', NULL, '2026-10-14T22:50:44', '2026-10-14T22:50:44'),
+(7, 'TX-PST-1792017672599-918B4485', 1, 'CREDIT', 'SAVINGS', 5000.00, 'POLARIS_BANK_TRANSFER', 'TEST-PST-WEBHOOK-1792017672492', 'Paystack Inward Transfer: DVA 9926000001', 'VERIFIED', NULL, '2026-10-14T23:41:12', '2026-10-14T23:41:12'),
+(8, 'TX-TSD-1792017688140-2FBDB8CD', 1, 'CREDIT', 'SAVINGS', 50000.00, 'POLARIS_BANK_TRANSFER', 'TS-DEP-INIT-9-1792017688', 'Initial deposit for 40th Milestone Birthday Celebration Target', 'VERIFIED', NULL, '2026-10-14T23:41:28', '2026-10-14T23:41:28'),
+(9, 'TX-TSD-1792017688211-AE5B7BBE', 1, 'CREDIT', 'SAVINGS', 75000.00, 'POLARIS_BANK_TRANSFER', 'TS-DEP-9-1792017688', 'Monthly bonus top-up for 40th Birthday', 'VERIFIED', NULL, '2026-10-14T23:41:28', '2026-10-14T23:41:28'),
+(10, 'TX-TSW-1792017688373-25117AF3', 1, 'DEBIT', 'SAVINGS', 50000.00, 'POLARIS_BANK_TRANSFER', 'TS-WDR-9-1792017688', 'Maturity Payout for 40th Milestone Birthday Celebration Target to Polaris Bank Limited 1140029381', 'VERIFIED', NULL, '2026-10-14T23:41:28', '2026-10-14T23:41:28'),
+(11, 'TX-TSW-1792017688421-0023ACA7', 1, 'DEBIT', 'SAVINGS', 75000.00, 'POLARIS_BANK_TRANSFER', 'TS-WDR-9-1792017688', 'Maturity Payout for 40th Milestone Birthday Celebration Target to Polaris Bank Limited 1140029381', 'VERIFIED', NULL, '2026-10-14T23:41:28', '2026-10-14T23:41:28'),
+(12, 'TXN-WLF-1-1792067575', 1, 'CREDIT', 'WELFARE_FUND', 1000.00, 'ONLINE_GATEWAY', 'TEST-DIST-UNDER-1792067575328', 'Welfare Solidarity Pool Levy (Adv #WMC-ADV-202610-0001)', 'VERIFIED', NULL, '2026-10-15T13:32:55', '2026-10-15T13:32:55'),
+(13, 'TXN-SHR-1-1792067575', 1, 'CREDIT', 'SHARE_CAPITAL', 1000.00, 'ONLINE_GATEWAY', 'TEST-DIST-UNDER-1792067575328', 'Share Capital Equity Subscription (1 units)', 'VERIFIED', NULL, '2026-10-15T13:32:55', '2026-10-15T13:32:55'),
+(14, 'TXN-SAV-1-1792067575', 1, 'CREDIT', 'SAVINGS', 1000.00, 'ONLINE_GATEWAY', 'TEST-DIST-UNDER-1792067575328', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001)', 'VERIFIED', NULL, '2026-10-15T13:32:55', '2026-10-15T13:32:55'),
+(16, 'TXN-SAV-1-1792067593542-B04D1A', 1, 'CREDIT', 'SAVINGS', 3000.00, 'ONLINE_GATEWAY', 'TEST-DIST-UNDER-1792067593526', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001)', 'VERIFIED', NULL, '2026-10-15T13:33:13', '2026-10-15T13:33:13'),
+(17, 'TXN-SAV-1-1792067593595-DB6CA7', 1, 'CREDIT', 'SAVINGS', 4000.00, 'ONLINE_GATEWAY', 'TEST-DIST-FULL-1792067593579', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001)', 'VERIFIED', NULL, '2026-10-15T13:33:13', '2026-10-15T13:33:13'),
+(18, 'TXN-SAV-1-1792067593677-69CAC4', 1, 'CREDIT', 'SAVINGS', 15000.00, 'ONLINE_GATEWAY', 'TEST-DIST-OVER-1792067593661', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001) [Includes Surplus: NGN 15,000.00]', 'VERIFIED', NULL, '2026-10-15T13:33:13', '2026-10-15T13:33:13'),
+(19, 'TX-PST-1792067609009-478B7FC1', 1, 'CREDIT', 'SAVINGS', 5000.00, 'POLARIS_BANK_TRANSFER', 'TEST-PST-WEBHOOK-1792067608989', 'Paystack Inward Transfer: DVA 9926000001', 'VERIFIED', NULL, '2026-10-15T13:33:29', '2026-10-15T13:33:29'),
+(20, 'TXN-SAV-1-1792067609051-D22C3F', 1, 'CREDIT', 'SAVINGS', 5000.00, 'ONLINE_GATEWAY', 'TEST-PST-WEBHOOK-1792067608989', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001) [Includes Surplus: NGN 5,000.00]', 'VERIFIED', NULL, '2026-10-15T13:33:29', '2026-10-15T13:33:29'),
+(21, 'TXN-SAV-1-1792067675675-17842B', 1, 'CREDIT', 'SAVINGS', 3000.00, 'ONLINE_GATEWAY', 'TEST-DIST-UNDER-1792067675655', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001) [Includes Surplus: NGN 3,000.00]', 'VERIFIED', NULL, '2026-10-15T13:34:35', '2026-10-15T13:34:35'),
+(22, 'TXN-SAV-1-1792067675742-155E97', 1, 'CREDIT', 'SAVINGS', 15000.00, 'ONLINE_GATEWAY', 'TEST-DIST-OVER-1792067675722', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001) [Includes Surplus: NGN 15,000.00]', 'VERIFIED', NULL, '2026-10-15T13:34:35', '2026-10-15T13:34:35'),
+(23, 'TXN-SAV-1-1792068163590-A919FF', 1, 'CREDIT', 'SAVINGS', 3000.00, 'ONLINE_GATEWAY', 'TEST-DIST-UNDER-1792068163561', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001) [Includes Surplus: NGN 3,000.00]', 'VERIFIED', NULL, '2026-10-15T13:42:43', '2026-10-15T13:42:43'),
+(24, 'TXN-SAV-1-1792068163655-78CD84', 1, 'CREDIT', 'SAVINGS', 15000.00, 'ONLINE_GATEWAY', 'TEST-DIST-OVER-1792068163639', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001) [Includes Surplus: NGN 15,000.00]', 'VERIFIED', NULL, '2026-10-15T13:42:43', '2026-10-15T13:42:43'),
+(25, 'TX-PST-1792068177859-053DA657', 1, 'CREDIT', 'SAVINGS', 5000.00, 'POLARIS_BANK_TRANSFER', 'TEST-PST-WEBHOOK-1792068177841', 'Paystack Inward Transfer: DVA 9926000001', 'VERIFIED', NULL, '2026-10-15T13:42:57', '2026-10-15T13:42:57'),
+(26, 'TXN-SAV-1-1792068177892-C346E2', 1, 'CREDIT', 'SAVINGS', 5000.00, 'ONLINE_GATEWAY', 'TEST-PST-WEBHOOK-1792068177841', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001) [Includes Surplus: NGN 5,000.00]', 'VERIFIED', NULL, '2026-10-15T13:42:57', '2026-10-15T13:42:57'),
+(27, 'TX-TSD-1792068182509-F4A99ACE', 1, 'CREDIT', 'SAVINGS', 50000.00, 'POLARIS_BANK_TRANSFER', 'TS-DEP-INIT-10-1792068182', 'Initial deposit for 40th Milestone Birthday Celebration Target', 'VERIFIED', NULL, '2026-10-15T13:43:02', '2026-10-15T13:43:02'),
+(28, 'TX-TSD-1792068182538-E0A71DFB', 1, 'CREDIT', 'SAVINGS', 75000.00, 'POLARIS_BANK_TRANSFER', 'TS-DEP-10-1792068182', 'Monthly bonus top-up for 40th Birthday', 'VERIFIED', NULL, '2026-10-15T13:43:02', '2026-10-15T13:43:02'),
+(29, 'TX-TSW-1792068182604-96E47BCD', 1, 'DEBIT', 'SAVINGS', 50000.00, 'POLARIS_BANK_TRANSFER', 'TS-WDR-10-1792068182', 'Maturity Payout for 40th Milestone Birthday Celebration Target to Polaris Bank Limited 1140029381', 'VERIFIED', NULL, '2026-10-15T13:43:02', '2026-10-15T13:43:02'),
+(30, 'TX-TSW-1792068182633-B18AB057', 1, 'DEBIT', 'SAVINGS', 75000.00, 'POLARIS_BANK_TRANSFER', 'TS-WDR-10-1792068182', 'Maturity Payout for 40th Milestone Birthday Celebration Target to Polaris Bank Limited 1140029381', 'VERIFIED', NULL, '2026-10-15T13:43:02', '2026-10-15T13:43:02'),
+(31, 'TXN-SAV-1-1792068886142-0B8DA1', 1, 'CREDIT', 'SAVINGS', 3000.00, 'ONLINE_GATEWAY', 'TEST-DIST-UNDER-1792068886120', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001) [Includes Surplus: NGN 3,000.00]', 'VERIFIED', NULL, '2026-10-15T13:54:46', '2026-10-15T13:54:46'),
+(32, 'TXN-SAV-1-1792068886190-CE07B0', 1, 'CREDIT', 'SAVINGS', 15000.00, 'ONLINE_GATEWAY', 'TEST-DIST-OVER-1792068886174', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001) [Includes Surplus: NGN 15,000.00]', 'VERIFIED', NULL, '2026-10-15T13:54:46', '2026-10-15T13:54:46'),
+(33, 'TXN-SAV-1-1792070771414-97ABBC', 1, 'CREDIT', 'SAVINGS', 3000.00, 'ONLINE_GATEWAY', 'TEST-DIST-UNDER-1792070771375', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001) [Includes Surplus: NGN 3,000.00]', 'VERIFIED', NULL, '2026-10-15T14:26:11', '2026-10-15T14:26:11'),
+(34, 'TXN-SAV-1-1792070771549-D2D697', 1, 'CREDIT', 'SAVINGS', 15000.00, 'ONLINE_GATEWAY', 'TEST-DIST-OVER-1792070771518', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001) [Includes Surplus: NGN 15,000.00]', 'VERIFIED', NULL, '2026-10-15T14:26:11', '2026-10-15T14:26:11'),
+(35, 'TX-PST-1792070791756-02DC1E7D', 1, 'CREDIT', 'SAVINGS', 5000.00, 'POLARIS_BANK_TRANSFER', 'TEST-PST-WEBHOOK-1792070791717', 'Paystack Inward Transfer: DVA 9926000001', 'VERIFIED', NULL, '2026-10-15T14:26:31', '2026-10-15T14:26:31'),
+(36, 'TXN-SAV-1-1792070791807-502537', 1, 'CREDIT', 'SAVINGS', 5000.00, 'ONLINE_GATEWAY', 'TEST-PST-WEBHOOK-1792070791717', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001) [Includes Surplus: NGN 5,000.00]', 'VERIFIED', NULL, '2026-10-15T14:26:31', '2026-10-15T14:26:31'),
+(37, 'TXN-SAV-1-1792146019501-E4D289', 1, 'CREDIT', 'SAVINGS', 3000.00, 'ONLINE_GATEWAY', 'TEST-DIST-UNDER-1792146019480', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001) [Includes Surplus: NGN 3,000.00]', 'VERIFIED', NULL, '2026-10-16T11:20:19', '2026-10-16T11:20:19'),
+(38, 'TXN-SAV-1-1792146019600-E4F6C0', 1, 'CREDIT', 'SAVINGS', 15000.00, 'ONLINE_GATEWAY', 'TEST-DIST-OVER-1792146019584', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0001) [Includes Surplus: NGN 15,000.00]', 'VERIFIED', NULL, '2026-10-16T11:20:19', '2026-10-16T11:20:19'),
+(39, 'TX-TSD-1792146029396-637186B5', 1, 'CREDIT', 'SAVINGS', 50000.00, 'POLARIS_BANK_TRANSFER', 'TS-DEP-INIT-11-1792146029', 'Initial deposit for 40th Milestone Birthday Celebration Target', 'VERIFIED', NULL, '2026-10-16T11:20:29', '2026-10-16T11:20:29'),
+(40, 'TX-TSD-1792146029427-945A0ACF', 1, 'CREDIT', 'SAVINGS', 75000.00, 'POLARIS_BANK_TRANSFER', 'TS-DEP-11-1792146029', 'Monthly bonus top-up for 40th Birthday', 'VERIFIED', NULL, '2026-10-16T11:20:29', '2026-10-16T11:20:29'),
+(41, 'TX-TSW-1792146029499-AF59C189', 1, 'DEBIT', 'SAVINGS', 50000.00, 'POLARIS_BANK_TRANSFER', 'TS-WDR-11-1792146029', 'Maturity Payout for 40th Milestone Birthday Celebration Target to Polaris Bank Limited 1140029381', 'VERIFIED', NULL, '2026-10-16T11:20:29', '2026-10-16T11:20:29'),
+(42, 'TX-TSW-1792146029534-E8E4DF6C', 1, 'DEBIT', 'SAVINGS', 75000.00, 'POLARIS_BANK_TRANSFER', 'TS-WDR-11-1792146029', 'Maturity Payout for 40th Milestone Birthday Celebration Target to Polaris Bank Limited 1140029381', 'VERIFIED', NULL, '2026-10-16T11:20:29', '2026-10-16T11:20:29'),
+(43, 'DISB-L-WMC-2026-4B4CF300', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 60000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-4B4CF300', 'VERIFIED', 1, '2026-10-17T00:00:00', '2026-10-17T12:15:28'),
+(44, 'DISB-L-WMC-2026-7CDE907B', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 60000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-7CDE907B', 'VERIFIED', 1, '2026-10-17T00:00:00', '2026-10-17T12:15:54'),
+(45, 'DISB-L-WMC-2026-9EB12EA0', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 50000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-9EB12EA0', 'VERIFIED', 1, '2026-10-17T00:00:00', '2026-10-17T12:15:54'),
+(46, 'TXN-WLF-2-1792235755358-FBE4EA', 2, 'CREDIT', 'WELFARE_FUND', 1000.00, 'POLARIS_BANK_TRANSFER', 'POLARIS-DEP-1792235755', 'Welfare Solidarity Pool Levy (Adv #WMC-ADV-202610-0002)', 'VERIFIED', NULL, '2026-10-17T12:15:55', '2026-10-17T12:15:55'),
+(47, 'TXN-SHR-2-1792235755358-FBE4EA', 2, 'CREDIT', 'SHARE_CAPITAL', 1000.00, 'POLARIS_BANK_TRANSFER', 'POLARIS-DEP-1792235755', 'Share Capital Equity Subscription (1 units)', 'VERIFIED', NULL, '2026-10-17T12:15:55', '2026-10-17T12:15:55'),
+(48, 'TXN-SAV-2-1792235755358-FBE4EA', 2, 'CREDIT', 'SAVINGS', 23000.00, 'POLARIS_BANK_TRANSFER', 'POLARIS-DEP-1792235755', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 15,000.00]', 'VERIFIED', NULL, '2026-10-17T12:15:55', '2026-10-17T12:15:55'),
+(49, 'DIR-CR-F527262DDC', 2, 'CREDIT', 'SAVINGS', 10000.00, 'INTERNAL_SET_OFF', NULL, 'Test Direct Credit', 'VERIFIED', 1, '2026-10-17T00:00:00', '2026-10-17T12:16:42'),
+(50, 'DISB-L-WMC-2026-E600E75C', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 60000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-E600E75C', 'VERIFIED', 1, '2026-10-17T00:00:00', '2026-10-17T12:16:54'),
+(51, 'DISB-L-WMC-2026-19495C0D', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 50000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-19495C0D', 'VERIFIED', 1, '2026-10-17T00:00:00', '2026-10-17T12:16:54')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.transactions (id, transaction_ref, member_id, transaction_type, ledger_category, amount, payment_method, channel_reference, narration, status, verified_by_officer_id, transaction_date, created_at) VALUES
+(52, 'DISB-L-WMC-2026-F4289A87', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 60000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-F4289A87', 'VERIFIED', 1, '2026-10-17T00:00:00', '2026-10-17T12:18:38'),
+(53, 'DISB-L-WMC-2026-1B64AC71', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 50000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-1B64AC71', 'VERIFIED', 1, '2026-10-17T00:00:00', '2026-10-17T12:18:39'),
+(54, 'TXN-SAV-2-1792235919585-7C94AB', 2, 'CREDIT', 'SAVINGS', 25000.00, 'POLARIS_BANK_TRANSFER', 'POLARIS-DEP-1792235919', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', 'VERIFIED', NULL, '2026-10-17T12:18:39', '2026-10-17T12:18:39'),
+(55, 'DISB-L-WMC-2026-024087A4', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 60000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-024087A4', 'VERIFIED', 1, '2026-10-17T00:00:00', '2026-10-17T12:19:36'),
+(56, 'DISB-L-WMC-2026-6B760A07', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 50000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-6B760A07', 'VERIFIED', 1, '2026-10-17T00:00:00', '2026-10-17T12:19:36'),
+(57, 'TXN-SAV-2-1792235977303-BC9C24', 2, 'CREDIT', 'SAVINGS', 25000.00, 'POLARIS_BANK_TRANSFER', 'POLARIS-DEP-1792235977', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', 'VERIFIED', NULL, '2026-10-17T12:19:37', '2026-10-17T12:19:37'),
+(58, 'DIR-CR-9FFD969684', 2, 'CREDIT', 'SAVINGS', 10000.00, 'INTERNAL_SET_OFF', NULL, 'Statutory incentive dividend allocation authorized by Board', 'VERIFIED', 1, '2026-10-17T00:00:00', '2026-10-17T12:19:37'),
+(59, 'DISB-L-WMC-2026-C047AD92', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 60000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-C047AD92', 'VERIFIED', 1, '2026-10-17T00:00:00', '2026-10-17T12:20:55'),
+(60, 'DISB-L-WMC-2026-25CED089', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 50000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-25CED089', 'VERIFIED', 1, '2026-10-17T00:00:00', '2026-10-17T12:20:55'),
+(61, 'TXN-SAV-2-1792236055851-0AA6A4', 2, 'CREDIT', 'SAVINGS', 25000.00, 'POLARIS_BANK_TRANSFER', 'POLARIS-DEP-1792236055', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', 'VERIFIED', NULL, '2026-10-17T12:20:55', '2026-10-17T12:20:55'),
+(62, 'DIR-CR-1C0A4F7841', 2, 'CREDIT', 'SAVINGS', 10000.00, 'INTERNAL_SET_OFF', NULL, 'Statutory incentive dividend allocation authorized by Board', 'VERIFIED', 1, '2026-10-17T00:00:00', '2026-10-17T12:20:55'),
+(63, 'DISB-L-WMC-2026-D7E76024', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 60000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-D7E76024', 'VERIFIED', 1, '2026-10-17T00:00:00', '2026-10-17T12:21:31'),
+(64, 'DISB-L-WMC-2026-F811C6EA', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 50000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-F811C6EA', 'VERIFIED', 1, '2026-10-17T00:00:00', '2026-10-17T12:21:31'),
+(65, 'TXN-SAV-2-1792236092300-9362C4', 2, 'CREDIT', 'SAVINGS', 25000.00, 'POLARIS_BANK_TRANSFER', 'POLARIS-DEP-1792236092', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', 'VERIFIED', NULL, '2026-10-17T12:21:32', '2026-10-17T12:21:32'),
+(66, 'DIR-CR-622F56BA5D', 2, 'CREDIT', 'SAVINGS', 10000.00, 'INTERNAL_SET_OFF', NULL, 'Statutory incentive dividend allocation authorized by Board', 'VERIFIED', 1, '2026-10-17T00:00:00', '2026-10-17T12:21:32'),
+(67, 'DISB-L-WMC-2026-3E14355D', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 60000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-3E14355D', 'VERIFIED', 1, '2026-10-17T00:00:00', '2026-10-17T12:22:34'),
+(68, 'DISB-L-WMC-2026-16B82E09', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 50000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-16B82E09', 'VERIFIED', 1, '2026-10-17T00:00:00', '2026-10-17T12:22:35'),
+(69, 'TXN-SAV-2-1792236155526-3B4423', 2, 'CREDIT', 'SAVINGS', 25000.00, 'POLARIS_BANK_TRANSFER', 'POLARIS-DEP-1792236155', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', 'VERIFIED', NULL, '2026-10-17T12:22:35', '2026-10-17T12:22:35'),
+(70, 'DIR-CR-03356AB3E0', 2, 'CREDIT', 'SAVINGS', 10000.00, 'INTERNAL_SET_OFF', NULL, 'Statutory incentive dividend allocation authorized by Board', 'VERIFIED', 1, '2026-10-17T00:00:00', '2026-10-17T12:22:35'),
+(71, 'DISB-L-WMC-2026-ACD892B1', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 60000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-ACD892B1', 'VERIFIED', 1, '2026-10-17T00:00:00', '2026-10-17T12:50:34'),
+(72, 'DISB-L-WMC-2026-9EB3E69D', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 50000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-9EB3E69D', 'VERIFIED', 1, '2026-10-17T00:00:00', '2026-10-17T12:50:34'),
+(73, 'TXN-SAV-2-1792237835278-DF5DD4', 2, 'CREDIT', 'SAVINGS', 25000.00, 'POLARIS_BANK_TRANSFER', 'POLARIS-DEP-1792237835', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', 'VERIFIED', NULL, '2026-10-17T12:50:35', '2026-10-17T12:50:35'),
+(74, 'DIR-CR-F23D888266', 2, 'CREDIT', 'SAVINGS', 10000.00, 'INTERNAL_SET_OFF', NULL, 'Statutory incentive dividend allocation authorized by Board', 'VERIFIED', 1, '2026-10-17T00:00:00', '2026-10-17T12:50:35'),
+(75, 'DISB-L-WMC-2026-B08B212F', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 50000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-B08B212F', 'VERIFIED', 1, '2026-10-17T00:00:00', '2026-10-17T17:36:37'),
+(76, 'DISB-L-WMC-2026-4D6E3006', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 60000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-4D6E3006', 'VERIFIED', 1, '2026-10-17T00:00:00', '2026-10-17T17:36:44'),
+(77, 'DISB-L-WMC-2026-308E47FD', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 50000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-308E47FD', 'VERIFIED', 1, '2026-10-17T00:00:00', '2026-10-17T17:36:44'),
+(78, 'TXN-SAV-2-1792255004514-AFB501', 2, 'CREDIT', 'SAVINGS', 25000.00, 'POLARIS_BANK_TRANSFER', 'POLARIS-DEP-1792255004', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', 'VERIFIED', NULL, '2026-10-17T17:36:44', '2026-10-17T17:36:44'),
+(79, 'DIR-CR-3D2FACB6E2', 2, 'CREDIT', 'SAVINGS', 10000.00, 'INTERNAL_SET_OFF', NULL, 'Statutory incentive dividend allocation authorized by Board', 'VERIFIED', 1, '2026-10-17T00:00:00', '2026-10-17T17:36:44'),
+(80, 'DISB-L-WMC-2026-AB3FE649', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 60000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-AB3FE649', 'VERIFIED', 1, '2026-10-17T00:00:00', '2026-10-17T17:45:35'),
+(81, 'DISB-L-WMC-2026-D1EFAC40', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 50000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-D1EFAC40', 'VERIFIED', 1, '2026-10-17T00:00:00', '2026-10-17T17:45:35'),
+(82, 'TXN-SAV-2-1792255535530-12206E', 2, 'CREDIT', 'SAVINGS', 25000.00, 'POLARIS_BANK_TRANSFER', 'POLARIS-DEP-1792255535', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', 'VERIFIED', NULL, '2026-10-17T17:45:35', '2026-10-17T17:45:35'),
+(83, 'DIR-CR-5AB26D9F27', 2, 'CREDIT', 'SAVINGS', 10000.00, 'INTERNAL_SET_OFF', NULL, 'Statutory incentive dividend allocation authorized by Board', 'VERIFIED', 1, '2026-10-17T00:00:00', '2026-10-17T17:45:35'),
+(86, 'DISB-L-WMC-2026-7E4740D4', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 50000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-7E4740D4', 'VERIFIED', 1, '2026-10-17T00:00:00', '2026-10-17T18:18:47'),
+(87, 'DISB-L-WMC-2026-679EA013', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 60000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-679EA013', 'VERIFIED', 1, '2026-10-17T00:00:00', '2026-10-17T18:19:22'),
+(88, 'DISB-L-WMC-2026-AD838415', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 50000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-AD838415', 'VERIFIED', 1, '2026-10-17T00:00:00', '2026-10-17T18:19:22'),
+(89, 'TXN-REG-2-1792257563117-BCC19A', 2, 'CREDIT', 'REGISTRATION_FEE', 5000.00, 'POLARIS_BANK_TRANSFER', 'POLARIS-DEP-1792257563', 'Entrance / Registration Fee - Article 7 (Adv #WMC-ADV-202610-0002)', 'VERIFIED', NULL, '2026-10-17T18:19:23', '2026-10-17T18:19:23'),
+(90, 'TXN-SAV-2-1792257563117-BCC19A', 2, 'CREDIT', 'SAVINGS', 20000.00, 'POLARIS_BANK_TRANSFER', 'POLARIS-DEP-1792257563', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 20,000.00]', 'VERIFIED', NULL, '2026-10-17T18:19:23', '2026-10-17T18:19:23'),
+(91, 'DIR-CR-8D86E6ECBC', 2, 'CREDIT', 'SAVINGS', 10000.00, 'INTERNAL_SET_OFF', NULL, 'Statutory incentive dividend allocation authorized by Board', 'VERIFIED', 1, '2026-10-17T00:00:00', '2026-10-17T18:19:23'),
+(94, 'DISB-L-WMC-2026-4D8EEC21', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 50000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-4D8EEC21', 'VERIFIED', 1, '2026-10-17T00:00:00', '2026-10-17T18:48:37'),
+(95, 'DISB-L-WMC-2026-BD294F9F', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 60000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-BD294F9F', 'VERIFIED', 1, '2026-10-17T00:00:00', '2026-10-17T18:48:51'),
+(96, 'DISB-L-WMC-2026-AF0E02D6', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 50000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-AF0E02D6', 'VERIFIED', 1, '2026-10-17T00:00:00', '2026-10-17T18:48:51'),
+(97, 'TXN-SAV-2-1792259332264-76213E', 2, 'CREDIT', 'SAVINGS', 25000.00, 'POLARIS_BANK_TRANSFER', 'POLARIS-DEP-1792259332', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', 'VERIFIED', NULL, '2026-10-17T18:48:52', '2026-10-17T18:48:52'),
+(98, 'DIR-CR-7A4DCB6E2A', 2, 'CREDIT', 'SAVINGS', 10000.00, 'INTERNAL_SET_OFF', NULL, 'Statutory incentive dividend allocation authorized by Board', 'VERIFIED', 1, '2026-10-17T00:00:00', '2026-10-17T18:48:52'),
+(99, 'DISB-L-WMC-2026-52DC9B5C', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 50000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-52DC9B5C', 'VERIFIED', 1, '2026-10-18T00:00:00', '2026-10-18T06:21:58'),
+(100, 'DISB-L-WMC-2026-BA661222', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 60000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-BA661222', 'VERIFIED', 1, '2026-10-18T00:00:00', '2026-10-18T06:24:15'),
+(101, 'DISB-L-WMC-2026-38376CF0', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 50000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-38376CF0', 'VERIFIED', 1, '2026-10-18T00:00:00', '2026-10-18T06:24:15'),
+(102, 'TXN-SAV-2-1792301056755-85EDED', 2, 'CREDIT', 'SAVINGS', 25000.00, 'POLARIS_BANK_TRANSFER', 'POLARIS-DEP-1792301056', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', 'VERIFIED', NULL, '2026-10-18T06:24:16', '2026-10-18T06:24:16'),
+(103, 'DIR-CR-E70BEF79F4', 2, 'CREDIT', 'SAVINGS', 10000.00, 'INTERNAL_SET_OFF', NULL, 'Statutory incentive dividend allocation authorized by Board', 'VERIFIED', 1, '2026-10-18T00:00:00', '2026-10-18T06:24:16'),
+(104, 'DISB-L-WMC-2026-8AC49362', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 50000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-8AC49362', 'VERIFIED', 1, '2026-10-18T00:00:00', '2026-10-18T06:25:55'),
+(108, 'DISB-L-WMC-2026-27B0D1DA', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 50000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-27B0D1DA', 'VERIFIED', 1, '2026-10-18T00:00:00', '2026-10-18T06:29:41')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.transactions (id, transaction_ref, member_id, transaction_type, ledger_category, amount, payment_method, channel_reference, narration, status, verified_by_officer_id, transaction_date, created_at) VALUES
+(113, 'DISB-L-WMC-2026-F0C66457', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 50000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-F0C66457', 'VERIFIED', 1, '2026-10-18T00:00:00', '2026-10-18T06:33:13'),
+(116, 'DIV-1-1-1792303095744', 1, 'CREDIT', 'SAVINGS', 87070.87, 'INTERNAL_SET_OFF', 'DIV-1-1-1792303095744', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T06:58:15', '2026-10-18T06:58:15'),
+(117, 'DIV-1-2-1792303095744', 2, 'CREDIT', 'SAVINGS', 73643.41, 'INTERNAL_SET_OFF', 'DIV-1-2-1792303095744', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T06:58:15', '2026-10-18T06:58:15'),
+(118, 'DIV-1-3-1792303095744', 3, 'CREDIT', 'SAVINGS', 14880.95, 'INTERNAL_SET_OFF', 'DIV-1-3-1792303095744', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T06:58:15', '2026-10-18T06:58:15'),
+(119, 'DIV-1-4-1792303095744', 4, 'CREDIT', 'SAVINGS', 14880.95, 'INTERNAL_SET_OFF', 'DIV-1-4-1792303095744', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T06:58:15', '2026-10-18T06:58:15'),
+(120, 'DIV-1-5-1792303095744', 5, 'CREDIT', 'SAVINGS', 14880.95, 'INTERNAL_SET_OFF', 'DIV-1-5-1792303095744', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T06:58:15', '2026-10-18T06:58:15'),
+(121, 'DIV-1-6-1792303095744', 6, 'CREDIT', 'SAVINGS', 14880.95, 'INTERNAL_SET_OFF', 'DIV-1-6-1792303095744', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T06:58:15', '2026-10-18T06:58:15'),
+(122, 'DIV-1-7-1792303095744', 7, 'CREDIT', 'SAVINGS', 14880.95, 'INTERNAL_SET_OFF', 'DIV-1-7-1792303095744', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T06:58:15', '2026-10-18T06:58:15'),
+(123, 'DIV-1-8-1792303095744', 8, 'CREDIT', 'SAVINGS', 14880.95, 'INTERNAL_SET_OFF', 'DIV-1-8-1792303095744', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T06:58:15', '2026-10-18T06:58:15'),
+(126, 'DISB-L-WMC-2026-73031A15', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 50000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-73031A15', 'VERIFIED', 1, '2026-10-18T00:00:00', '2026-10-18T06:58:33'),
+(127, 'DIV-2-1-1792304082273', 1, 'CREDIT', 'SAVINGS', 76491.43, 'INTERNAL_SET_OFF', 'DIV-2-1-1792304082273', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T07:14:42', '2026-10-18T07:14:42'),
+(128, 'DIV-2-2-1792304082273', 2, 'CREDIT', 'SAVINGS', 73752.44, 'INTERNAL_SET_OFF', 'DIV-2-2-1792304082273', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T07:14:42', '2026-10-18T07:14:42'),
+(129, 'DIV-2-3-1792304082273', 3, 'CREDIT', 'SAVINGS', 16626.02, 'INTERNAL_SET_OFF', 'DIV-2-3-1792304082273', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T07:14:42', '2026-10-18T07:14:42'),
+(130, 'DIV-2-4-1792304082273', 4, 'CREDIT', 'SAVINGS', 16626.02, 'INTERNAL_SET_OFF', 'DIV-2-4-1792304082273', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T07:14:42', '2026-10-18T07:14:42'),
+(131, 'DIV-2-5-1792304082273', 5, 'CREDIT', 'SAVINGS', 16626.02, 'INTERNAL_SET_OFF', 'DIV-2-5-1792304082273', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T07:14:42', '2026-10-18T07:14:42'),
+(132, 'DIV-2-6-1792304082273', 6, 'CREDIT', 'SAVINGS', 16626.02, 'INTERNAL_SET_OFF', 'DIV-2-6-1792304082273', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T07:14:42', '2026-10-18T07:14:42'),
+(133, 'DIV-2-7-1792304082273', 7, 'CREDIT', 'SAVINGS', 16626.02, 'INTERNAL_SET_OFF', 'DIV-2-7-1792304082273', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T07:14:42', '2026-10-18T07:14:42'),
+(134, 'DIV-2-8-1792304082273', 8, 'CREDIT', 'SAVINGS', 16626.02, 'INTERNAL_SET_OFF', 'DIV-2-8-1792304082273', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T07:14:42', '2026-10-18T07:14:42'),
+(135, 'DISB-L-WMC-2026-BF61E7B5', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 60000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-BF61E7B5', 'VERIFIED', 1, '2026-10-18T00:00:00', '2026-10-18T07:15:25'),
+(136, 'DISB-L-WMC-2026-378B202E', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 50000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-378B202E', 'VERIFIED', 1, '2026-10-18T00:00:00', '2026-10-18T07:15:25'),
+(137, 'TXN-SAV-2-1792304125998-F39FAC', 2, 'CREDIT', 'SAVINGS', 25000.00, 'POLARIS_BANK_TRANSFER', 'POLARIS-DEP-1792304125', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', 'VERIFIED', NULL, '2026-10-18T07:15:25', '2026-10-18T07:15:25'),
+(138, 'DISB-L-WMC-2026-661009D9', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 60000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-661009D9', 'VERIFIED', 1, '2026-10-18T00:00:00', '2026-10-18T07:20:14'),
+(139, 'DISB-L-WMC-2026-D682DCB3', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 50000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-D682DCB3', 'VERIFIED', 1, '2026-10-18T00:00:00', '2026-10-18T07:20:14'),
+(140, 'TXN-SAV-2-1792304414956-05E70F', 2, 'CREDIT', 'SAVINGS', 25000.00, 'POLARIS_BANK_TRANSFER', 'POLARIS-DEP-1792304414', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', 'VERIFIED', NULL, '2026-10-18T07:20:14', '2026-10-18T07:20:14'),
+(141, 'DIR-CR-CADB89F5EC', 2, 'CREDIT', 'SAVINGS', 10000.00, 'INTERNAL_SET_OFF', NULL, 'Statutory incentive dividend allocation authorized by Board', 'VERIFIED', 1, '2026-10-18T00:00:00', '2026-10-18T07:20:15'),
+(144, 'DISB-L-WMC-2026-143C4A29', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 50000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-143C4A29', 'VERIFIED', 1, '2026-10-18T00:00:00', '2026-10-18T07:20:41'),
+(147, 'DIV-3-1-1792304460644', 1, 'CREDIT', 'SAVINGS', 65954.87, 'INTERNAL_SET_OFF', 'DIV-3-1-1792304460644', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T07:21:00', '2026-10-18T07:21:00'),
+(148, 'DIV-3-2-1792304460644', 2, 'CREDIT', 'SAVINGS', 76574.45, 'INTERNAL_SET_OFF', 'DIV-3-2-1792304460644', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T07:21:00', '2026-10-18T07:21:00'),
+(149, 'DIV-3-3-1792304460644', 3, 'CREDIT', 'SAVINGS', 17911.78, 'INTERNAL_SET_OFF', 'DIV-3-3-1792304460644', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T07:21:00', '2026-10-18T07:21:00'),
+(150, 'DIV-3-4-1792304460644', 4, 'CREDIT', 'SAVINGS', 17911.78, 'INTERNAL_SET_OFF', 'DIV-3-4-1792304460644', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T07:21:00', '2026-10-18T07:21:00'),
+(151, 'DIV-3-5-1792304460644', 5, 'CREDIT', 'SAVINGS', 17911.78, 'INTERNAL_SET_OFF', 'DIV-3-5-1792304460644', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T07:21:00', '2026-10-18T07:21:00'),
+(152, 'DIV-3-6-1792304460644', 6, 'CREDIT', 'SAVINGS', 17911.78, 'INTERNAL_SET_OFF', 'DIV-3-6-1792304460644', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T07:21:00', '2026-10-18T07:21:00'),
+(153, 'DIV-3-7-1792304460644', 7, 'CREDIT', 'SAVINGS', 17911.78, 'INTERNAL_SET_OFF', 'DIV-3-7-1792304460644', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T07:21:00', '2026-10-18T07:21:00'),
+(154, 'DIV-3-8-1792304460644', 8, 'CREDIT', 'SAVINGS', 17911.78, 'INTERNAL_SET_OFF', 'DIV-3-8-1792304460644', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T07:21:00', '2026-10-18T07:21:00'),
+(155, 'TXN-FCL-B-76-1792306391', 2, 'DEBIT', 'SAVINGS', 30000.00, 'INTERNAL_SET_OFF', 'L-WMC-2026-553AB4D4', 'Foreclosure offset against defaulted loan L-WMC-2026-553AB4D4', 'VERIFIED', NULL, '2026-10-18T07:53:11', '2026-10-18T07:53:11'),
+(156, 'TXN-FCL-B-76-1792306535', 2, 'DEBIT', 'SAVINGS', 30000.00, 'INTERNAL_SET_OFF', 'L-WMC-2026-553AB4D4', 'Foreclosure offset against defaulted loan L-WMC-2026-553AB4D4', 'VERIFIED', NULL, '2026-10-18T07:55:35', '2026-10-18T07:55:35'),
+(157, 'TXN-FCL-G-76-1-1792306535', 1, 'DEBIT', 'SAVINGS', 20000.00, 'INTERNAL_SET_OFF', 'L-WMC-2026-553AB4D4', 'Guarantor collateral foreclosure offset for Olaleke Olaoye (L-WMC-2026-553AB4D4)', 'VERIFIED', NULL, '2026-10-18T07:55:35', '2026-10-18T07:55:35'),
+(158, 'TXN-FCL-B-76-1792306594', 2, 'DEBIT', 'SAVINGS', 30000.00, 'INTERNAL_SET_OFF', 'L-WMC-2026-553AB4D4', 'Foreclosure offset against defaulted loan L-WMC-2026-553AB4D4', 'VERIFIED', NULL, '2026-10-18T07:56:34', '2026-10-18T07:56:34'),
+(159, 'TXN-FCL-G-76-1-1792306594', 1, 'DEBIT', 'SAVINGS', 20000.00, 'INTERNAL_SET_OFF', 'L-WMC-2026-553AB4D4', 'Guarantor collateral foreclosure offset for Olaleke Olaoye (L-WMC-2026-553AB4D4)', 'VERIFIED', NULL, '2026-10-18T07:56:34', '2026-10-18T07:56:34'),
+(160, 'TXN-FCL-B-76-1792306615', 2, 'DEBIT', 'SAVINGS', 30000.00, 'INTERNAL_SET_OFF', 'L-WMC-2026-553AB4D4', 'Foreclosure offset against defaulted loan L-WMC-2026-553AB4D4', 'VERIFIED', NULL, '2026-10-18T07:56:55', '2026-10-18T07:56:55'),
+(161, 'TXN-FCL-G-76-1-1792306615', 1, 'DEBIT', 'SAVINGS', 20000.00, 'INTERNAL_SET_OFF', 'L-WMC-2026-553AB4D4', 'Guarantor collateral foreclosure offset for Olaleke Olaoye (L-WMC-2026-553AB4D4)', 'VERIFIED', NULL, '2026-10-18T07:56:55', '2026-10-18T07:56:55'),
+(162, 'TXN-FCL-B-76-1792306666', 2, 'DEBIT', 'SAVINGS', 30000.00, 'INTERNAL_SET_OFF', 'L-WMC-2026-553AB4D4', 'Foreclosure offset against defaulted loan L-WMC-2026-553AB4D4', 'VERIFIED', NULL, '2026-10-18T07:57:46', '2026-10-18T07:57:46'),
+(163, 'TXN-FCL-G-76-1-1792306666', 1, 'DEBIT', 'SAVINGS', 20000.00, 'INTERNAL_SET_OFF', 'L-WMC-2026-553AB4D4', 'Guarantor collateral foreclosure offset for Olaleke Olaoye (L-WMC-2026-553AB4D4)', 'VERIFIED', NULL, '2026-10-18T07:57:46', '2026-10-18T07:57:46'),
+(164, 'DIV-4-1-1792306683433', 1, 'CREDIT', 'SAVINGS', 63895.21, 'INTERNAL_SET_OFF', 'DIV-4-1-1792306683433', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T07:58:03', '2026-10-18T07:58:03'),
+(165, 'DIV-4-2-1792306683433', 2, 'CREDIT', 'SAVINGS', 68728.27, 'INTERNAL_SET_OFF', 'DIV-4-2-1792306683433', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T07:58:03', '2026-10-18T07:58:03'),
+(166, 'DIV-4-3-1792306683433', 3, 'CREDIT', 'SAVINGS', 19562.75, 'INTERNAL_SET_OFF', 'DIV-4-3-1792306683433', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T07:58:03', '2026-10-18T07:58:03'),
+(167, 'DIV-4-4-1792306683433', 4, 'CREDIT', 'SAVINGS', 19562.75, 'INTERNAL_SET_OFF', 'DIV-4-4-1792306683433', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T07:58:03', '2026-10-18T07:58:03'),
+(168, 'DIV-4-5-1792306683433', 5, 'CREDIT', 'SAVINGS', 19562.75, 'INTERNAL_SET_OFF', 'DIV-4-5-1792306683433', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T07:58:03', '2026-10-18T07:58:03'),
+(169, 'DIV-4-6-1792306683433', 6, 'CREDIT', 'SAVINGS', 19562.75, 'INTERNAL_SET_OFF', 'DIV-4-6-1792306683433', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T07:58:03', '2026-10-18T07:58:03'),
+(170, 'DIV-4-7-1792306683433', 7, 'CREDIT', 'SAVINGS', 19562.75, 'INTERNAL_SET_OFF', 'DIV-4-7-1792306683433', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T07:58:03', '2026-10-18T07:58:03')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.transactions (id, transaction_ref, member_id, transaction_type, ledger_category, amount, payment_method, channel_reference, narration, status, verified_by_officer_id, transaction_date, created_at) VALUES
+(171, 'DIV-4-8-1792306683433', 8, 'CREDIT', 'SAVINGS', 19562.75, 'INTERNAL_SET_OFF', 'DIV-4-8-1792306683433', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T07:58:03', '2026-10-18T07:58:03'),
+(172, 'DISB-L-WMC-2026-1788CB66', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 60000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-1788CB66', 'VERIFIED', 1, '2026-10-18T00:00:00', '2026-10-18T07:58:18'),
+(173, 'DISB-L-WMC-2026-5ECA7E1D', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 50000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-5ECA7E1D', 'VERIFIED', 1, '2026-10-18T00:00:00', '2026-10-18T07:58:18'),
+(174, 'TXN-SAV-2-1792306698866-544283', 2, 'CREDIT', 'SAVINGS', 25000.00, 'POLARIS_BANK_TRANSFER', 'POLARIS-DEP-1792306698', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', 'VERIFIED', NULL, '2026-10-18T07:58:18', '2026-10-18T07:58:18'),
+(175, 'DIR-CR-F7D394137F', 2, 'CREDIT', 'SAVINGS', 10000.00, 'INTERNAL_SET_OFF', NULL, 'Statutory incentive dividend allocation authorized by Board', 'VERIFIED', 1, '2026-10-18T00:00:00', '2026-10-18T07:58:18'),
+(178, 'DISB-L-WMC-2026-8D5FD046', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 50000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-8D5FD046', 'VERIFIED', 1, '2026-10-18T00:00:00', '2026-10-18T07:59:33'),
+(181, 'TXN-FCL-B-82-1792306796', 2, 'DEBIT', 'SAVINGS', 30000.00, 'INTERNAL_SET_OFF', 'L-WMC-2026-9CDA5F1F', 'Foreclosure offset against defaulted loan L-WMC-2026-9CDA5F1F', 'VERIFIED', NULL, '2026-10-18T07:59:57', '2026-10-18T07:59:57'),
+(182, 'TXN-FCL-G-82-1-1792306797', 1, 'DEBIT', 'SAVINGS', 20000.00, 'INTERNAL_SET_OFF', 'L-WMC-2026-9CDA5F1F', 'Guarantor collateral foreclosure offset for Olaleke Olaoye (L-WMC-2026-9CDA5F1F)', 'VERIFIED', NULL, '2026-10-18T07:59:57', '2026-10-18T07:59:57'),
+(183, 'TXN-FCL-B-82-1792306818', 2, 'DEBIT', 'SAVINGS', 30000.00, 'INTERNAL_SET_OFF', 'L-WMC-2026-9CDA5F1F', 'Foreclosure offset against defaulted loan L-WMC-2026-9CDA5F1F', 'VERIFIED', NULL, '2026-10-18T08:00:18', '2026-10-18T08:00:18'),
+(184, 'TXN-FCL-G-82-1-1792306818', 1, 'DEBIT', 'SAVINGS', 20000.00, 'INTERNAL_SET_OFF', 'L-WMC-2026-9CDA5F1F', 'Guarantor collateral foreclosure offset for Olaleke Olaoye (L-WMC-2026-9CDA5F1F)', 'VERIFIED', NULL, '2026-10-18T08:00:18', '2026-10-18T08:00:18'),
+(185, 'DIV-5-1-1792306829992', 1, 'CREDIT', 'SAVINGS', 57387.25, 'INTERNAL_SET_OFF', 'DIV-5-1-1792306829992', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T08:00:30', '2026-10-18T08:00:30'),
+(186, 'DIV-5-2-1792306829992', 2, 'CREDIT', 'SAVINGS', 67759.48, 'INTERNAL_SET_OFF', 'DIV-5-2-1792306829992', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T08:00:30', '2026-10-18T08:00:30'),
+(187, 'DIV-5-3-1792306829992', 3, 'CREDIT', 'SAVINGS', 20808.88, 'INTERNAL_SET_OFF', 'DIV-5-3-1792306829992', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T08:00:30', '2026-10-18T08:00:30'),
+(188, 'DIV-5-4-1792306829992', 4, 'CREDIT', 'SAVINGS', 20808.88, 'INTERNAL_SET_OFF', 'DIV-5-4-1792306829992', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T08:00:30', '2026-10-18T08:00:30'),
+(189, 'DIV-5-5-1792306829992', 5, 'CREDIT', 'SAVINGS', 20808.88, 'INTERNAL_SET_OFF', 'DIV-5-5-1792306829992', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T08:00:30', '2026-10-18T08:00:30'),
+(190, 'DIV-5-6-1792306829992', 6, 'CREDIT', 'SAVINGS', 20808.88, 'INTERNAL_SET_OFF', 'DIV-5-6-1792306829992', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T08:00:30', '2026-10-18T08:00:30'),
+(191, 'DIV-5-7-1792306829992', 7, 'CREDIT', 'SAVINGS', 20808.88, 'INTERNAL_SET_OFF', 'DIV-5-7-1792306829992', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T08:00:30', '2026-10-18T08:00:30'),
+(192, 'DIV-5-8-1792306829992', 8, 'CREDIT', 'SAVINGS', 20808.88, 'INTERNAL_SET_OFF', 'DIV-5-8-1792306829992', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T08:00:30', '2026-10-18T08:00:30'),
+(193, 'DIV-6-1-1792306842630', 1, 'CREDIT', 'SAVINGS', 55797.93, 'INTERNAL_SET_OFF', 'DIV-6-1-1792306842630', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T08:00:42', '2026-10-18T08:00:42'),
+(194, 'DIV-6-2-1792306842630', 2, 'CREDIT', 'SAVINGS', 65409.56, 'INTERNAL_SET_OFF', 'DIV-6-2-1792306842630', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T08:00:42', '2026-10-18T08:00:42'),
+(195, 'DIV-6-3-1792306842630', 3, 'CREDIT', 'SAVINGS', 21465.42, 'INTERNAL_SET_OFF', 'DIV-6-3-1792306842630', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T08:00:42', '2026-10-18T08:00:42'),
+(196, 'DIV-6-4-1792306842630', 4, 'CREDIT', 'SAVINGS', 21465.42, 'INTERNAL_SET_OFF', 'DIV-6-4-1792306842630', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T08:00:42', '2026-10-18T08:00:42'),
+(197, 'DIV-6-5-1792306842630', 5, 'CREDIT', 'SAVINGS', 21465.42, 'INTERNAL_SET_OFF', 'DIV-6-5-1792306842630', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T08:00:42', '2026-10-18T08:00:42'),
+(198, 'DIV-6-6-1792306842630', 6, 'CREDIT', 'SAVINGS', 21465.42, 'INTERNAL_SET_OFF', 'DIV-6-6-1792306842630', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T08:00:42', '2026-10-18T08:00:42'),
+(199, 'DIV-6-7-1792306842630', 7, 'CREDIT', 'SAVINGS', 21465.42, 'INTERNAL_SET_OFF', 'DIV-6-7-1792306842630', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T08:00:42', '2026-10-18T08:00:42'),
+(200, 'DIV-6-8-1792306842630', 8, 'CREDIT', 'SAVINGS', 21465.42, 'INTERNAL_SET_OFF', 'DIV-6-8-1792306842630', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T08:00:42', '2026-10-18T08:00:42'),
+(201, 'DISB-L-WMC-2026-411C590A', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 60000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-411C590A', 'VERIFIED', 1, '2026-10-18T00:00:00', '2026-10-18T08:00:44'),
+(202, 'DISB-L-WMC-2026-42F4BAA4', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 50000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-42F4BAA4', 'VERIFIED', 1, '2026-10-18T00:00:00', '2026-10-18T08:00:44'),
+(203, 'TXN-SAV-2-1792306845554-DFF2FB', 2, 'CREDIT', 'SAVINGS', 25000.00, 'POLARIS_BANK_TRANSFER', 'POLARIS-DEP-1792306845', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', 'VERIFIED', NULL, '2026-10-18T08:00:45', '2026-10-18T08:00:45'),
+(204, 'DIR-CR-F66BD14DC0', 2, 'CREDIT', 'SAVINGS', 10000.00, 'INTERNAL_SET_OFF', NULL, 'Statutory incentive dividend allocation authorized by Board', 'VERIFIED', 1, '2026-10-18T00:00:00', '2026-10-18T08:00:45'),
+(207, 'DISB-L-WMC-2026-D1496574', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 50000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-D1496574', 'VERIFIED', 1, '2026-10-18T00:00:00', '2026-10-18T08:00:49'),
+(210, 'TXN-FCL-B-88-1792306858', 2, 'DEBIT', 'SAVINGS', 30000.00, 'INTERNAL_SET_OFF', 'L-WMC-2026-3EB551D4', 'Foreclosure offset against defaulted loan L-WMC-2026-3EB551D4', 'VERIFIED', NULL, '2026-10-18T08:00:58', '2026-10-18T08:00:58'),
+(211, 'TXN-FCL-G-88-1-1792306858', 1, 'DEBIT', 'SAVINGS', 20000.00, 'INTERNAL_SET_OFF', 'L-WMC-2026-3EB551D4', 'Guarantor collateral foreclosure offset for Olaleke Olaoye (L-WMC-2026-3EB551D4)', 'VERIFIED', NULL, '2026-10-18T08:00:58', '2026-10-18T08:00:58'),
+(212, 'DIV-7-1-1792306931222', 1, 'CREDIT', 'SAVINGS', 50004.55, 'INTERNAL_SET_OFF', 'DIV-7-1-1792306931222', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T08:02:11', '2026-10-18T08:02:11'),
+(213, 'DIV-7-2-1792306931222', 2, 'CREDIT', 'SAVINGS', 66002.41, 'INTERNAL_SET_OFF', 'DIV-7-2-1792306931222', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T08:02:11', '2026-10-18T08:02:11'),
+(214, 'DIV-7-3-1792306931222', 3, 'CREDIT', 'SAVINGS', 22332.17, 'INTERNAL_SET_OFF', 'DIV-7-3-1792306931222', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T08:02:11', '2026-10-18T08:02:11'),
+(215, 'DIV-7-4-1792306931222', 4, 'CREDIT', 'SAVINGS', 22332.17, 'INTERNAL_SET_OFF', 'DIV-7-4-1792306931222', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T08:02:11', '2026-10-18T08:02:11'),
+(216, 'DIV-7-5-1792306931222', 5, 'CREDIT', 'SAVINGS', 22332.17, 'INTERNAL_SET_OFF', 'DIV-7-5-1792306931222', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T08:02:11', '2026-10-18T08:02:11'),
+(217, 'DIV-7-6-1792306931222', 6, 'CREDIT', 'SAVINGS', 22332.17, 'INTERNAL_SET_OFF', 'DIV-7-6-1792306931222', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T08:02:11', '2026-10-18T08:02:11'),
+(218, 'DIV-7-7-1792306931222', 7, 'CREDIT', 'SAVINGS', 22332.17, 'INTERNAL_SET_OFF', 'DIV-7-7-1792306931222', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T08:02:11', '2026-10-18T08:02:11'),
+(219, 'DIV-7-8-1792306931222', 8, 'CREDIT', 'SAVINGS', 22332.17, 'INTERNAL_SET_OFF', 'DIV-7-8-1792306931222', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-18T08:02:11', '2026-10-18T08:02:11'),
+(220, 'TXN-FCL-B-88-1792306938', 2, 'DEBIT', 'SAVINGS', 30000.00, 'INTERNAL_SET_OFF', 'L-WMC-2026-3EB551D4', 'Foreclosure offset against defaulted loan L-WMC-2026-3EB551D4', 'VERIFIED', NULL, '2026-10-18T08:02:18', '2026-10-18T08:02:18'),
+(221, 'TXN-FCL-G-88-1-1792306938', 1, 'DEBIT', 'SAVINGS', 20000.00, 'INTERNAL_SET_OFF', 'L-WMC-2026-3EB551D4', 'Guarantor collateral foreclosure offset for Olaleke Olaoye (L-WMC-2026-3EB551D4)', 'VERIFIED', NULL, '2026-10-18T08:02:18', '2026-10-18T08:02:18'),
+(222, 'DISB-L-WMC-2026-B2B13EB5', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 60000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-B2B13EB5', 'VERIFIED', 1, '2026-10-18T00:00:00', '2026-10-18T08:02:25'),
+(223, 'DISB-L-WMC-2026-0A354FC6', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 50000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-0A354FC6', 'VERIFIED', 1, '2026-10-18T00:00:00', '2026-10-18T08:02:26'),
+(224, 'TXN-SAV-2-1792306946387-750AF9', 2, 'CREDIT', 'SAVINGS', 25000.00, 'POLARIS_BANK_TRANSFER', 'POLARIS-DEP-1792306946', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', 'VERIFIED', NULL, '2026-10-18T08:02:26', '2026-10-18T08:02:26'),
+(225, 'DIR-CR-ACB49B3E4B', 2, 'CREDIT', 'SAVINGS', 10000.00, 'INTERNAL_SET_OFF', NULL, 'Statutory incentive dividend allocation authorized by Board', 'VERIFIED', 1, '2026-10-18T00:00:00', '2026-10-18T08:02:26'),
+(228, 'DISB-L-WMC-2026-ED18C66A', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 50000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-ED18C66A', 'VERIFIED', 1, '2026-10-18T00:00:00', '2026-10-18T08:02:35'),
+(231, 'TXN-FCL-G-88-1-1792307701', 1, 'DEBIT', 'SAVINGS', 30000.00, 'INTERNAL_SET_OFF', 'L-WMC-2026-3EB551D4', 'Guarantor collateral foreclosure offset for Olaleke Olaoye (L-WMC-2026-3EB551D4)', 'VERIFIED', NULL, '2026-10-18T08:15:01', '2026-10-18T08:15:01'),
+(232, 'DISB-L-WMC-2026-5DC53AFD', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 50000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-5DC53AFD', 'VERIFIED', 1, '2026-10-18T00:00:00', '2026-10-18T08:15:29')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.transactions (id, transaction_ref, member_id, transaction_type, ledger_category, amount, payment_method, channel_reference, narration, status, verified_by_officer_id, transaction_date, created_at) VALUES
+(233, 'DISB-L-WMC-2026-5C03FBF6', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 35000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-5C03FBF6', 'VERIFIED', 1, '2026-10-18T00:00:00', '2026-10-18T08:15:35'),
+(234, 'DISB-L-WMC-2026-4708585A', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 60000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-4708585A', 'VERIFIED', 1, '2026-10-18T00:00:00', '2026-10-18T08:26:15'),
+(235, 'DISB-L-WMC-2026-6F0F1438', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 50000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-6F0F1438', 'VERIFIED', 1, '2026-10-18T00:00:00', '2026-10-18T08:26:16'),
+(236, 'TXN-SAV-2-1792308376686-3AC8FA', 2, 'CREDIT', 'SAVINGS', 25000.00, 'POLARIS_BANK_TRANSFER', 'POLARIS-DEP-1792308376', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', 'VERIFIED', NULL, '2026-10-18T08:26:16', '2026-10-18T08:26:16'),
+(237, 'DIR-CR-3763123C9F', 2, 'CREDIT', 'SAVINGS', 10000.00, 'INTERNAL_SET_OFF', NULL, 'Statutory incentive dividend allocation authorized by Board', 'VERIFIED', 1, '2026-10-18T00:00:00', '2026-10-18T08:26:16'),
+(238, 'TXN-FCL-B-97-1792308408', 2, 'DEBIT', 'SAVINGS', 30000.00, 'INTERNAL_SET_OFF', 'L-WMC-2026-14744738', 'Foreclosure offset against defaulted loan L-WMC-2026-14744738', 'VERIFIED', NULL, '2026-10-18T08:26:48', '2026-10-18T08:26:48'),
+(239, 'TXN-FCL-G-97-1-1792308408', 1, 'DEBIT', 'SAVINGS', 20000.00, 'INTERNAL_SET_OFF', 'L-WMC-2026-14744738', 'Guarantor collateral foreclosure offset for Olaleke Olaoye (L-WMC-2026-14744738)', 'VERIFIED', NULL, '2026-10-18T08:26:48', '2026-10-18T08:26:48'),
+(240, 'DISB-L-WMC-2026-4FE7FD7F', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 60000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-4FE7FD7F', 'VERIFIED', 1, '2026-10-18T00:00:00', '2026-10-18T08:57:00'),
+(241, 'DISB-L-WMC-2026-A08C388B', 2, 'DEBIT', 'LOAN_DISBURSEMENT', 50000.00, 'POLARIS_BANK_TRANSFER', NULL, 'Loan disbursement for L-WMC-2026-A08C388B', 'VERIFIED', 1, '2026-10-18T00:00:00', '2026-10-18T08:57:01'),
+(242, 'TXN-SAV-2-1792310221390-8B5318', 2, 'CREDIT', 'SAVINGS', 25000.00, 'POLARIS_BANK_TRANSFER', 'POLARIS-DEP-1792310221', 'Regular Savings Remittance (Adv #WMC-ADV-202610-0002) [Includes Surplus: NGN 25,000.00]', 'VERIFIED', NULL, '2026-10-18T08:57:01', '2026-10-18T08:57:01'),
+(243, 'DIR-CR-66A42C0AD6', 2, 'CREDIT', 'SAVINGS', 10000.00, 'INTERNAL_SET_OFF', NULL, 'Statutory incentive dividend allocation authorized by Board', 'VERIFIED', 1, '2026-10-18T00:00:00', '2026-10-18T08:57:01'),
+(244, 'TXN-FCL-B-100-1792310232', 2, 'DEBIT', 'SAVINGS', 30000.00, 'INTERNAL_SET_OFF', 'L-WMC-2026-A30ED407', 'Foreclosure offset against defaulted loan L-WMC-2026-A30ED407', 'VERIFIED', NULL, '2026-10-18T08:57:12', '2026-10-18T08:57:12'),
+(245, 'TXN-FCL-G-100-1-1792310232', 1, 'DEBIT', 'SAVINGS', 20000.00, 'INTERNAL_SET_OFF', 'L-WMC-2026-A30ED407', 'Guarantor collateral foreclosure offset for Olaleke Olaoye (L-WMC-2026-A30ED407)', 'VERIFIED', NULL, '2026-10-18T08:57:12', '2026-10-18T08:57:12'),
+(246, 'DIV-8-1-1792935911193', 1, 'CREDIT', 'SAVINGS', 44316.75, 'INTERNAL_SET_OFF', 'DIV-8-1-1792935911193', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-25T14:45:11', '2026-10-25T14:45:11'),
+(247, 'DIV-8-2-1792935911193', 2, 'CREDIT', 'SAVINGS', 67076.33, 'INTERNAL_SET_OFF', 'DIV-8-2-1792935911193', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-25T14:45:11', '2026-10-25T14:45:11'),
+(248, 'DIV-8-3-1792935911193', 3, 'CREDIT', 'SAVINGS', 23101.15, 'INTERNAL_SET_OFF', 'DIV-8-3-1792935911193', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-25T14:45:11', '2026-10-25T14:45:11'),
+(249, 'DIV-8-4-1792935911193', 4, 'CREDIT', 'SAVINGS', 23101.15, 'INTERNAL_SET_OFF', 'DIV-8-4-1792935911193', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-25T14:45:11', '2026-10-25T14:45:11'),
+(250, 'DIV-8-5-1792935911193', 5, 'CREDIT', 'SAVINGS', 23101.15, 'INTERNAL_SET_OFF', 'DIV-8-5-1792935911193', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-25T14:45:11', '2026-10-25T14:45:11'),
+(251, 'DIV-8-6-1792935911193', 6, 'CREDIT', 'SAVINGS', 23101.15, 'INTERNAL_SET_OFF', 'DIV-8-6-1792935911193', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-25T14:45:11', '2026-10-25T14:45:11'),
+(252, 'DIV-8-7-1792935911193', 7, 'CREDIT', 'SAVINGS', 23101.15, 'INTERNAL_SET_OFF', 'DIV-8-7-1792935911193', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-25T14:45:11', '2026-10-25T14:45:11'),
+(253, 'DIV-8-8-1792935911193', 8, 'CREDIT', 'SAVINGS', 23101.15, 'INTERNAL_SET_OFF', 'DIV-8-8-1792935911193', 'Annual Surplus Dividend (FY2026 Official Dividend Run) - Credited to Savings', 'VERIFIED', NULL, '2026-10-25T14:45:11', '2026-10-25T14:45:11')
+ON CONFLICT DO NOTHING;
+
+SELECT setval(pg_get_serial_sequence('public.transactions', 'id'), COALESCE((SELECT MAX(id) FROM public.transactions), 1), true);
+
+-- ---------------------------------------------------------------------
+-- Table: payment_advices (14 records)
+-- ---------------------------------------------------------------------
+INSERT INTO public.payment_advices (id, advice_reference, member_id, billing_period, issue_date, due_date, tier_at_issuance, amount_fines, amount_registration_fee, amount_loan_repayment, amount_welfare, amount_share_capital, amount_regular_savings, amount_target_savings, amount_arrears, total_expected_amount, paid_fines, paid_registration, paid_loan, paid_welfare, paid_shares, paid_savings, paid_targets, total_amount_paid, outstanding_balance, status, admin_notes, created_at, updated_at) VALUES
+(1, 'WMC-ADV-202610-0001', 1, '2026-10', '2026-10-01', '2026-10-28', 'STANDARD', 0.00, 5000.00, 0.00, 1000.00, 3000.00, 22000.00, 0.00, 0.00, 31000.00, 0.00, 0.00, 0.00, 1000.00, 1000.00, 8000.00, 0.00, 10000.00, 21000.00, 'PARTIALLY_PAID', 'Revised by PRESIDENT [THIS_MONTH_ONLY]: Cooperator requested temporary voluntary increase in share equity per SOP', '2026-10-15T13:32:04', '2026-10-18T08:57:01'),
+(2, 'WMC-ADV-202610-0002', 2, '2026-10', '2026-10-01', '2026-10-28', 'STANDARD', 0.00, 5000.00, 0.00, 1000.00, 1000.00, 8000.00, 0.00, 0.00, 15000.00, 0.00, 5000.00, 0.00, 1000.00, 1000.00, 8000.00, 0.00, 15000.00, 0.00, 'FULLY_SETTLED', NULL, '2026-10-15T13:33:13', '2026-10-17T18:19:23'),
+(3, 'WMC-ADV-202610-0003', 3, '2026-10', '2026-10-01', '2026-10-28', 'STANDARD', 0.00, 5000.00, 0.00, 1000.00, 1000.00, 8000.00, 0.00, 0.00, 15000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 15000.00, 'DUE', NULL, '2026-10-15T13:33:13', '2026-10-17T17:59:23'),
+(4, 'WMC-ADV-202610-0004', 4, '2026-10', '2026-10-01', '2026-10-28', 'STANDARD', 0.00, 5000.00, 0.00, 1000.00, 1000.00, 8000.00, 0.00, 0.00, 15000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 15000.00, 'DUE', NULL, '2026-10-15T13:33:13', '2026-10-17T17:59:23'),
+(5, 'WMC-ADV-202610-0005', 5, '2026-10', '2026-10-01', '2026-10-28', 'STANDARD', 0.00, 5000.00, 0.00, 1000.00, 1000.00, 8000.00, 0.00, 0.00, 15000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 15000.00, 'DUE', NULL, '2026-10-15T13:33:13', '2026-10-17T17:59:23'),
+(6, 'WMC-ADV-202610-0006', 6, '2026-10', '2026-10-01', '2026-10-28', 'STANDARD', 0.00, 5000.00, 0.00, 1000.00, 1000.00, 8000.00, 0.00, 0.00, 15000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 15000.00, 'DUE', NULL, '2026-10-15T13:33:13', '2026-10-17T17:59:23'),
+(7, 'WMC-ADV-202610-0007', 7, '2026-10', '2026-10-01', '2026-10-28', 'STANDARD', 0.00, 5000.00, 0.00, 1000.00, 1000.00, 8000.00, 0.00, 0.00, 15000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 15000.00, 'DUE', NULL, '2026-10-15T13:33:13', '2026-10-17T17:59:23'),
+(8, 'WMC-ADV-202610-0008', 8, '2026-10', '2026-10-01', '2026-10-28', 'PLUS', 0.00, 5000.00, 0.00, 2500.00, 2500.00, 20000.00, 0.00, 0.00, 30000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 30000.00, 'DUE', NULL, '2026-10-15T13:33:13', '2026-10-17T17:59:23'),
+(9, 'WMC-ADV-202610-0015', 15, '2026-10', '2026-10-01', '2026-10-28', 'PLUS', 0.00, 5000.00, 0.00, 2500.00, 2500.00, 20000.00, 0.00, 0.00, 30000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 30000.00, 'DUE', NULL, '2026-10-17T08:24:28', '2026-10-17T17:59:23'),
+(10, 'WMC-ADV-202610-0016', 16, '2026-10', '2026-10-01', '2026-10-28', 'PREMIUM', 0.00, 5000.00, 0.00, 5000.00, 5000.00, 40000.00, 0.00, 0.00, 55000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 55000.00, 'DUE', NULL, '2026-10-17T12:29:42', '2026-10-17T17:59:23'),
+(69, 'WMC-ADV-TEST-01', 10021, '2026-07', '2026-07-01', '2026-07-28', 'STANDARD', 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 15000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 15000.00, 'DUE', NULL, '2026-10-18T08:57:11', '2026-10-18T08:57:11'),
+(70, 'WMC-ADV-TEST-02', 10021, '2026-08', '2026-08-01', '2026-08-28', 'STANDARD', 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 15000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 15000.00, 'DUE', NULL, '2026-10-18T08:57:11', '2026-10-18T08:57:11'),
+(71, 'WMC-ADV-TEST-03', 10021, '2026-09', '2026-09-01', '2026-09-28', 'STANDARD', 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 15000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 15000.00, 'DUE', NULL, '2026-10-18T08:57:11', '2026-10-18T08:57:11'),
+(72, 'WMC-ADV-202610-10021', 10021, '2026-10', '2026-10-01', '2026-10-28', 'STANDARD', 0.00, 5000.00, 0.00, 1000.00, 1000.00, 8000.00, 0.00, 15000.00, 30000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 30000.00, 'DUE', NULL, '2026-10-18T08:57:11', '2026-10-18T08:57:11')
+ON CONFLICT DO NOTHING;
+
+SELECT setval(pg_get_serial_sequence('public.payment_advices', 'id'), COALESCE((SELECT MAX(id) FROM public.payment_advices), 1), true);
+
+-- ---------------------------------------------------------------------
+-- Table: payment_advice_distributions (36 records)
+-- ---------------------------------------------------------------------
+INSERT INTO public.payment_advice_distributions (id, advice_id, member_id, payment_reference, payment_method, total_payment_received, allocated_fines, allocated_registration, allocated_loan, allocated_welfare, allocated_shares, allocated_savings, allocated_targets, allocated_surplus_savings, narration, created_at) VALUES
+(1, 1, 1, 'TEST-DIST-UNDER-1792067575328', 'PAYSTACK_DVA', 3000.00, 0.00, 0.00, 0.00, 1000.00, 1000.00, 1000.00, 0.00, 0.00, 'Partial Inward Transfer Test', '2026-10-15T13:32:55'),
+(2, 1, 1, 'TEST-DIST-UNDER-1792067593526', 'PAYSTACK_DVA', 3000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 3000.00, 0.00, 0.00, 'Partial Inward Transfer Test', '2026-10-15T13:33:13'),
+(3, 1, 1, 'TEST-DIST-FULL-1792067593579', 'PAYSTACK_DVA', 4000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 4000.00, 0.00, 0.00, 'Full Balance Clearance', '2026-10-15T13:33:13'),
+(4, 1, 1, 'TEST-DIST-OVER-1792067593661', 'PAYSTACK_DVA', 15000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 15000.00, 'Surplus Remittance Test', '2026-10-15T13:33:13'),
+(5, 1, 1, 'TEST-PST-WEBHOOK-1792067608989', 'PAYSTACK_DVA', 5000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 5000.00, 'Paystack Inward Settlement: 9926000001', '2026-10-15T13:33:29'),
+(6, 1, 1, 'TEST-DIST-UNDER-1792067675655', 'PAYSTACK_DVA', 3000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 3000.00, 'Partial Inward Transfer Test', '2026-10-15T13:34:35'),
+(7, 1, 1, 'TEST-DIST-OVER-1792067675722', 'PAYSTACK_DVA', 15000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 15000.00, 'Surplus Remittance Test', '2026-10-15T13:34:35'),
+(8, 1, 1, 'TEST-DIST-UNDER-1792068163561', 'PAYSTACK_DVA', 3000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 3000.00, 'Partial Inward Transfer Test', '2026-10-15T13:42:43'),
+(9, 1, 1, 'TEST-DIST-OVER-1792068163639', 'PAYSTACK_DVA', 15000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 15000.00, 'Surplus Remittance Test', '2026-10-15T13:42:43'),
+(10, 1, 1, 'TEST-PST-WEBHOOK-1792068177841', 'PAYSTACK_DVA', 5000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 5000.00, 'Paystack Inward Settlement: 9926000001', '2026-10-15T13:42:57'),
+(11, 1, 1, 'TEST-DIST-UNDER-1792068886120', 'PAYSTACK_DVA', 3000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 3000.00, 'Partial Inward Transfer Test', '2026-10-15T13:54:46'),
+(12, 1, 1, 'TEST-DIST-OVER-1792068886174', 'PAYSTACK_DVA', 15000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 15000.00, 'Surplus Remittance Test', '2026-10-15T13:54:46'),
+(13, 1, 1, 'TEST-DIST-UNDER-1792070771375', 'PAYSTACK_DVA', 3000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 3000.00, 'Partial Inward Transfer Test', '2026-10-15T14:26:11'),
+(14, 1, 1, 'TEST-DIST-OVER-1792070771518', 'PAYSTACK_DVA', 15000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 15000.00, 'Surplus Remittance Test', '2026-10-15T14:26:11'),
+(15, 1, 1, 'TEST-PST-WEBHOOK-1792070791717', 'PAYSTACK_DVA', 5000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 5000.00, 'Paystack Inward Settlement: 9926000001', '2026-10-15T14:26:31'),
+(16, 1, 1, 'TEST-DIST-UNDER-1792146019480', 'PAYSTACK_DVA', 3000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 3000.00, 'Partial Inward Transfer Test', '2026-10-16T11:20:19'),
+(17, 1, 1, 'TEST-DIST-OVER-1792146019584', 'PAYSTACK_DVA', 15000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 15000.00, 'Surplus Remittance Test', '2026-10-16T11:20:19'),
+(18, 2, 2, 'POLARIS-DEP-1792235755', 'POLARIS_BANK_TRANSFER', 25000.00, 0.00, 0.00, 0.00, 1000.00, 1000.00, 8000.00, 0.00, 15000.00, 'Polaris Bank manual transfer verified by PRESIDENT. Polaris Bank branch deposit teller receipt verified against statement', '2026-10-17T12:15:55'),
+(19, 2, 2, 'POLARIS-DEP-1792235919', 'POLARIS_BANK_TRANSFER', 25000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 25000.00, 'Polaris Bank manual transfer verified by PRESIDENT. Polaris Bank branch deposit teller receipt verified against statement', '2026-10-17T12:18:39'),
+(20, 2, 2, 'POLARIS-DEP-1792235977', 'POLARIS_BANK_TRANSFER', 25000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 25000.00, 'Polaris Bank manual transfer verified by PRESIDENT. Polaris Bank branch deposit teller receipt verified against statement', '2026-10-17T12:19:37'),
+(21, 2, 2, 'POLARIS-DEP-1792236055', 'POLARIS_BANK_TRANSFER', 25000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 25000.00, 'Polaris Bank manual transfer verified by PRESIDENT. Polaris Bank branch deposit teller receipt verified against statement', '2026-10-17T12:20:55'),
+(22, 2, 2, 'POLARIS-DEP-1792236092', 'POLARIS_BANK_TRANSFER', 25000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 25000.00, 'Polaris Bank manual transfer verified by PRESIDENT. Polaris Bank branch deposit teller receipt verified against statement', '2026-10-17T12:21:32'),
+(23, 2, 2, 'POLARIS-DEP-1792236155', 'POLARIS_BANK_TRANSFER', 25000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 25000.00, 'Polaris Bank manual transfer verified by PRESIDENT. Polaris Bank branch deposit teller receipt verified against statement', '2026-10-17T12:22:35'),
+(24, 2, 2, 'POLARIS-DEP-1792237835', 'POLARIS_BANK_TRANSFER', 25000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 25000.00, 'Polaris Bank manual transfer verified by PRESIDENT. Polaris Bank branch deposit teller receipt verified against statement', '2026-10-17T12:50:35'),
+(25, 2, 2, 'POLARIS-DEP-1792255004', 'POLARIS_BANK_TRANSFER', 25000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 25000.00, 'Polaris Bank manual transfer verified by PRESIDENT. Polaris Bank branch deposit teller receipt verified against statement', '2026-10-17T17:36:44'),
+(26, 2, 2, 'POLARIS-DEP-1792255535', 'POLARIS_BANK_TRANSFER', 25000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 25000.00, 'Polaris Bank manual transfer verified by PRESIDENT. Polaris Bank branch deposit teller receipt verified against statement', '2026-10-17T17:45:35'),
+(28, 2, 2, 'POLARIS-DEP-1792257563', 'POLARIS_BANK_TRANSFER', 25000.00, 0.00, 5000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 20000.00, 'Polaris Bank manual transfer verified by PRESIDENT. Polaris Bank branch deposit teller receipt verified against statement', '2026-10-17T18:19:23'),
+(30, 2, 2, 'POLARIS-DEP-1792259332', 'POLARIS_BANK_TRANSFER', 25000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 25000.00, 'Polaris Bank manual transfer verified by PRESIDENT. Polaris Bank branch deposit teller receipt verified against statement', '2026-10-17T18:48:52'),
+(31, 2, 2, 'POLARIS-DEP-1792301056', 'POLARIS_BANK_TRANSFER', 25000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 25000.00, 'Polaris Bank manual transfer verified by PRESIDENT. Polaris Bank branch deposit teller receipt verified against statement', '2026-10-18T06:24:16'),
+(34, 2, 2, 'POLARIS-DEP-1792304125', 'POLARIS_BANK_TRANSFER', 25000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 25000.00, 'Polaris Bank manual transfer verified by PRESIDENT. Polaris Bank branch deposit teller receipt verified against statement', '2026-10-18T07:15:26'),
+(35, 2, 2, 'POLARIS-DEP-1792304414', 'POLARIS_BANK_TRANSFER', 25000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 25000.00, 'Polaris Bank manual transfer verified by PRESIDENT. Polaris Bank branch deposit teller receipt verified against statement', '2026-10-18T07:20:14'),
+(37, 2, 2, 'POLARIS-DEP-1792306698', 'POLARIS_BANK_TRANSFER', 25000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 25000.00, 'Polaris Bank manual transfer verified by PRESIDENT. Polaris Bank branch deposit teller receipt verified against statement', '2026-10-18T07:58:18'),
+(39, 2, 2, 'POLARIS-DEP-1792306845', 'POLARIS_BANK_TRANSFER', 25000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 25000.00, 'Polaris Bank manual transfer verified by PRESIDENT. Polaris Bank branch deposit teller receipt verified against statement', '2026-10-18T08:00:45'),
+(41, 2, 2, 'POLARIS-DEP-1792306946', 'POLARIS_BANK_TRANSFER', 25000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 25000.00, 'Polaris Bank manual transfer verified by PRESIDENT. Polaris Bank branch deposit teller receipt verified against statement', '2026-10-18T08:02:26'),
+(43, 2, 2, 'POLARIS-DEP-1792308376', 'POLARIS_BANK_TRANSFER', 25000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 25000.00, 'Polaris Bank manual transfer verified by PRESIDENT. Polaris Bank branch deposit teller receipt verified against statement', '2026-10-18T08:26:16'),
+(44, 2, 2, 'POLARIS-DEP-1792310221', 'POLARIS_BANK_TRANSFER', 25000.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 25000.00, 'Polaris Bank manual transfer verified by PRESIDENT. Polaris Bank branch deposit teller receipt verified against statement', '2026-10-18T08:57:01')
+ON CONFLICT DO NOTHING;
+
+SELECT setval(pg_get_serial_sequence('public.payment_advice_distributions', 'id'), COALESCE((SELECT MAX(id) FROM public.payment_advice_distributions), 1), true);
+
+-- ---------------------------------------------------------------------
+-- Table: loan_products (4 records)
+-- ---------------------------------------------------------------------
+INSERT INTO public.loan_products (id, product_name, product_code, description, min_membership_months, max_multiplier_of_savings, max_principal_ceiling, admin_cost_fee_percent, min_tenure_months, max_tenure_months, is_active, created_at) VALUES
+(1, 'Ordinary loan (*2 of savings)', 'ORDINARY_LOAN', 'Ordinary facility up to 2x savings collateral per statutory bye-laws', 6, 2.0, 5000000.00, 2.50, 1, 24, TRUE, '2026-10-13T21:24:18'),
+(2, 'Investment Loan', 'INVESTMENT_LOAN', 'Asset acquisition, enterprise development and high-yield cooperative investment projects', 6, 3.0, 10000000.00, 3.00, 3, 36, TRUE, '2026-10-13T21:24:18'),
+(3, 'Salary Advance Loan', 'SALARY_ADVANCE', 'Short-term payroll liquidity advance facility (1-3 months)', 1, 1.0, 500000.00, 1.50, 1, 3, TRUE, '2026-10-13T21:24:18'),
+(4, 'General Purchase Loan', 'GENERAL_PURCHASE_LOAN', 'Consumer goods, electronics, and household asset financing via CO-CARE Marketplace portal', 3, 2.0, 2000000.00, 2.00, 1, 12, TRUE, '2026-10-17T17:27:54')
+ON CONFLICT DO NOTHING;
+
+SELECT setval(pg_get_serial_sequence('public.loan_products', 'id'), COALESCE((SELECT MAX(id) FROM public.loan_products), 1), true);
+
+-- ---------------------------------------------------------------------
+-- Table: loans (100 records)
+-- ---------------------------------------------------------------------
+INSERT INTO public.loans (id, loan_reference, member_id, product_id, principal_amount, admin_cost_fee, total_amount_payable, tenure_months, monthly_installment, total_paid, outstanding_balance, status, application_date, approval_date, disbursement_date, next_due_date, maturity_date, created_at, updated_at, approval_level_percent, current_approval_stage, presidential_override, decline_reason, declined_by_officer_id, declined_by_role, purpose_narration) VALUES
+(1, 'L-WMC-2026-8FC92F65', 2, 1, 60000.00, 3000.00, 63000.00, 6, 10500.00, 0.00, 63000.00, 'ACTIVE', '2026-10-17', '2026-10-17', '2026-10-17', '2026-11-17', '2027-04-17', '2026-10-17T11:51:59', '2026-10-17T11:51:59', 100, 'DISBURSED', TRUE, NULL, NULL, NULL, 'Professional Equipment Acquisition'),
+(2, 'L-WMC-2026-93622EA9', 2, 1, 60000.00, 3000.00, 63000.00, 6, 10500.00, 0.00, 63000.00, 'PENDING', '2026-10-17', NULL, NULL, NULL, NULL, '2026-10-17T11:56:09', '2026-10-17T11:56:09', 0, 'CREDIT_COMMITTEE', FALSE, NULL, NULL, NULL, 'Professional Equipment Acquisition'),
+(3, 'L-WMC-2026-45583D5F', 2, 1, 60000.00, 3000.00, 63000.00, 6, 10500.00, 0.00, 63000.00, 'PENDING', '2026-10-17', NULL, NULL, NULL, NULL, '2026-10-17T12:13:51', '2026-10-17T12:13:51', 0, 'CREDIT_COMMITTEE', FALSE, NULL, NULL, NULL, 'Professional Equipment Acquisition'),
+(4, 'L-WMC-2026-4B4CF300', 2, 1, 60000.00, 3000.00, 63000.00, 6, 10500.00, 0.00, 63000.00, 'ACTIVE', '2026-10-17', '2026-10-17', '2026-10-17', '2026-11-17', '2027-04-17', '2026-10-17T12:15:27', '2026-10-17T12:15:28', 100, 'DISBURSED', FALSE, NULL, NULL, NULL, 'Professional Equipment Acquisition'),
+(5, 'L-WMC-2026-7CDE907B', 2, 1, 60000.00, 3000.00, 63000.00, 6, 10500.00, 0.00, 63000.00, 'ACTIVE', '2026-10-17', '2026-10-17', '2026-10-17', '2026-11-17', '2027-04-17', '2026-10-17T12:15:54', '2026-10-17T12:15:54', 100, 'DISBURSED', FALSE, NULL, NULL, NULL, 'Professional Equipment Acquisition'),
+(6, 'L-WMC-2026-9EB12EA0', 2, 1, 50000.00, 2500.00, 52500.00, 4, 13125.00, 0.00, 52500.00, 'ACTIVE', '2026-10-17', '2026-10-17', '2026-10-17', '2026-11-17', '2027-02-17', '2026-10-17T12:15:54', '2026-10-17T12:15:54', 100, 'DISBURSED', TRUE, NULL, NULL, NULL, 'Medical Emergency Financing'),
+(7, 'L-WMC-2026-0A52E43B', 2, 1, 150000.00, 7500.00, 157500.00, 12, 13125.00, 0.00, 157500.00, 'PENDING', '2026-10-17', NULL, NULL, NULL, NULL, '2026-10-17T12:15:54', '2026-10-17T12:15:55', 0, 'CREDIT_COMMITTEE', FALSE, NULL, 1, 'PRESIDENT', 'Commercial Venture Capital'),
+(8, 'L-WMC-2026-E600E75C', 2, 1, 60000.00, 3000.00, 63000.00, 6, 10500.00, 0.00, 63000.00, 'ACTIVE', '2026-10-17', '2026-10-17', '2026-10-17', '2026-11-17', '2027-04-17', '2026-10-17T12:16:54', '2026-10-17T12:16:54', 100, 'DISBURSED', FALSE, NULL, NULL, NULL, 'Professional Equipment Acquisition'),
+(9, 'L-WMC-2026-19495C0D', 2, 1, 50000.00, 2500.00, 52500.00, 4, 13125.00, 0.00, 52500.00, 'ACTIVE', '2026-10-17', '2026-10-17', '2026-10-17', '2026-11-17', '2027-02-17', '2026-10-17T12:16:54', '2026-10-17T12:16:54', 100, 'DISBURSED', TRUE, NULL, NULL, NULL, 'Medical Emergency Financing'),
+(10, 'L-WMC-2026-F4289A87', 2, 1, 60000.00, 3000.00, 63000.00, 6, 10500.00, 0.00, 63000.00, 'ACTIVE', '2026-10-17', '2026-10-17', '2026-10-17', '2026-11-17', '2027-04-17', '2026-10-17T12:18:38', '2026-10-17T12:18:38', 100, 'DISBURSED', FALSE, NULL, NULL, NULL, 'Professional Equipment Acquisition'),
+(11, 'L-WMC-2026-1B64AC71', 2, 1, 50000.00, 2500.00, 52500.00, 4, 13125.00, 0.00, 52500.00, 'ACTIVE', '2026-10-17', '2026-10-17', '2026-10-17', '2026-11-17', '2027-02-17', '2026-10-17T12:18:38', '2026-10-17T12:18:38', 100, 'DISBURSED', TRUE, NULL, NULL, NULL, 'Medical Emergency Financing'),
+(12, 'L-WMC-2026-5C487B8A', 2, 1, 35000.00, 1750.00, 36750.00, 6, 6125.00, 0.00, 36750.00, 'PENDING', '2026-10-17', NULL, NULL, NULL, NULL, '2026-10-17T12:18:39', '2026-10-17T12:18:39', 0, 'CREDIT_COMMITTEE', FALSE, NULL, 1, 'PRESIDENT', 'Commercial Venture Capital'),
+(13, 'L-WMC-2026-024087A4', 2, 1, 60000.00, 3000.00, 63000.00, 6, 10500.00, 0.00, 63000.00, 'ACTIVE', '2026-10-17', '2026-10-17', '2026-10-17', '2026-11-17', '2027-04-17', '2026-10-17T12:19:36', '2026-10-17T12:19:36', 100, 'DISBURSED', FALSE, NULL, NULL, NULL, 'Professional Equipment Acquisition'),
+(14, 'L-WMC-2026-6B760A07', 2, 1, 50000.00, 2500.00, 52500.00, 4, 13125.00, 0.00, 52500.00, 'ACTIVE', '2026-10-17', '2026-10-17', '2026-10-17', '2026-11-17', '2027-02-17', '2026-10-17T12:19:36', '2026-10-17T12:19:36', 100, 'DISBURSED', TRUE, NULL, NULL, NULL, 'Medical Emergency Financing'),
+(15, 'L-WMC-2026-A6D209F2', 2, 1, 35000.00, 1750.00, 36750.00, 6, 6125.00, 0.00, 36750.00, 'PENDING', '2026-10-17', NULL, NULL, NULL, NULL, '2026-10-17T12:19:36', '2026-10-17T12:19:37', 0, 'CREDIT_COMMITTEE', FALSE, NULL, 1, 'PRESIDENT', 'Commercial Venture Capital'),
+(16, 'L-WMC-2026-C047AD92', 2, 1, 60000.00, 3000.00, 63000.00, 6, 10500.00, 0.00, 63000.00, 'ACTIVE', '2026-10-17', '2026-10-17', '2026-10-17', '2026-11-17', '2027-04-17', '2026-10-17T12:20:54', '2026-10-17T12:20:55', 100, 'DISBURSED', FALSE, NULL, NULL, NULL, 'Professional Equipment Acquisition'),
+(17, 'L-WMC-2026-25CED089', 2, 1, 50000.00, 2500.00, 52500.00, 4, 13125.00, 0.00, 52500.00, 'ACTIVE', '2026-10-17', '2026-10-17', '2026-10-17', '2026-11-17', '2027-02-17', '2026-10-17T12:20:55', '2026-10-17T12:20:55', 100, 'DISBURSED', TRUE, NULL, NULL, NULL, 'Medical Emergency Financing'),
+(18, 'L-WMC-2026-9FF9CCAC', 2, 1, 35000.00, 1750.00, 36750.00, 6, 6125.00, 0.00, 36750.00, 'PENDING', '2026-10-17', NULL, NULL, NULL, NULL, '2026-10-17T12:20:55', '2026-10-17T12:20:55', 0, 'CREDIT_COMMITTEE', FALSE, NULL, 1, 'PRESIDENT', 'Commercial Venture Capital'),
+(19, 'L-WMC-2026-D7E76024', 2, 1, 60000.00, 3000.00, 63000.00, 6, 10500.00, 0.00, 63000.00, 'ACTIVE', '2026-10-17', '2026-10-17', '2026-10-17', '2026-11-17', '2027-04-17', '2026-10-17T12:21:31', '2026-10-17T12:21:31', 100, 'DISBURSED', FALSE, NULL, NULL, NULL, 'Professional Equipment Acquisition'),
+(20, 'L-WMC-2026-F811C6EA', 2, 1, 50000.00, 2500.00, 52500.00, 4, 13125.00, 0.00, 52500.00, 'ACTIVE', '2026-10-17', '2026-10-17', '2026-10-17', '2026-11-17', '2027-02-17', '2026-10-17T12:21:31', '2026-10-17T12:21:31', 100, 'DISBURSED', TRUE, NULL, NULL, NULL, 'Medical Emergency Financing'),
+(21, 'L-WMC-2026-22F82E14', 2, 1, 35000.00, 1750.00, 36750.00, 6, 6125.00, 0.00, 36750.00, 'PENDING', '2026-10-17', NULL, NULL, NULL, NULL, '2026-10-17T12:21:31', '2026-10-17T12:21:32', 0, 'CREDIT_COMMITTEE', FALSE, NULL, 1, 'PRESIDENT', 'Commercial Venture Capital'),
+(22, 'L-WMC-2026-3E14355D', 2, 1, 60000.00, 3000.00, 63000.00, 6, 10500.00, 0.00, 63000.00, 'ACTIVE', '2026-10-17', '2026-10-17', '2026-10-17', '2026-11-17', '2027-04-17', '2026-10-17T12:22:34', '2026-10-17T12:22:34', 100, 'DISBURSED', FALSE, NULL, NULL, NULL, 'Professional Equipment Acquisition'),
+(23, 'L-WMC-2026-16B82E09', 2, 1, 50000.00, 2500.00, 52500.00, 4, 13125.00, 0.00, 52500.00, 'ACTIVE', '2026-10-17', '2026-10-17', '2026-10-17', '2026-11-17', '2027-02-17', '2026-10-17T12:22:34', '2026-10-17T12:22:34', 100, 'DISBURSED', TRUE, NULL, NULL, NULL, 'Medical Emergency Financing'),
+(24, 'L-WMC-2026-1E8346E3', 2, 1, 35000.00, 1750.00, 36750.00, 6, 6125.00, 0.00, 36750.00, 'PENDING', '2026-10-17', NULL, NULL, NULL, NULL, '2026-10-17T12:22:35', '2026-10-17T12:22:35', 0, 'CREDIT_COMMITTEE', FALSE, NULL, 1, 'PRESIDENT', 'Commercial Venture Capital'),
+(25, 'L-WMC-2026-ACD892B1', 2, 1, 60000.00, 3000.00, 63000.00, 6, 10500.00, 0.00, 63000.00, 'ACTIVE', '2026-10-17', '2026-10-17', '2026-10-17', '2026-11-17', '2027-04-17', '2026-10-17T12:50:34', '2026-10-17T12:50:34', 100, 'DISBURSED', FALSE, NULL, NULL, NULL, 'Professional Equipment Acquisition'),
+(26, 'L-WMC-2026-9EB3E69D', 2, 1, 50000.00, 2500.00, 52500.00, 4, 13125.00, 0.00, 52500.00, 'ACTIVE', '2026-10-17', '2026-10-17', '2026-10-17', '2026-11-17', '2027-02-17', '2026-10-17T12:50:34', '2026-10-17T12:50:34', 100, 'DISBURSED', TRUE, NULL, NULL, NULL, 'Medical Emergency Financing'),
+(27, 'L-WMC-2026-8C2D75DB', 2, 1, 35000.00, 1750.00, 36750.00, 6, 6125.00, 0.00, 36750.00, 'PENDING', '2026-10-17', NULL, NULL, NULL, NULL, '2026-10-17T12:50:34', '2026-10-17T12:50:35', 0, 'CREDIT_COMMITTEE', FALSE, NULL, 1, 'PRESIDENT', 'Commercial Venture Capital'),
+(28, 'L-WMC-2026-B08B212F', 2, 1, 50000.00, 1250.00, 51250.00, 6, 8541.67, 0.00, 51250.00, 'ACTIVE', '2026-10-17', '2026-10-17', '2026-10-17', '2026-11-17', '2027-04-17', '2026-10-17T17:36:37', '2026-10-17T17:36:37', 100, 'DISBURSED', TRUE, NULL, NULL, NULL, 'Working capital financing with peer co-signers'),
+(29, 'L-WMC-2026-96DD63CB', 2, 1, 30000.00, 750.00, 30750.00, 6, 5125.00, 0.00, 30750.00, 'PENDING', '2026-10-17', NULL, NULL, NULL, NULL, '2026-10-17T17:36:37', '2026-10-17T17:36:37', 0, 'CREDIT_COMMITTEE', FALSE, NULL, NULL, NULL, 'Invalid self-guaranteed loan'),
+(30, 'L-WMC-2026-4D6E3006', 2, 1, 60000.00, 1500.00, 61500.00, 6, 10250.00, 0.00, 61500.00, 'ACTIVE', '2026-10-17', '2026-10-17', '2026-10-17', '2026-11-17', '2027-04-17', '2026-10-17T17:36:43', '2026-10-17T17:36:43', 100, 'DISBURSED', FALSE, NULL, NULL, NULL, 'Professional Equipment Acquisition'),
+(31, 'L-WMC-2026-308E47FD', 2, 1, 50000.00, 1250.00, 51250.00, 4, 12812.50, 0.00, 51250.00, 'ACTIVE', '2026-10-17', '2026-10-17', '2026-10-17', '2026-11-17', '2027-02-17', '2026-10-17T17:36:44', '2026-10-17T17:36:44', 100, 'DISBURSED', TRUE, NULL, NULL, NULL, 'Medical Emergency Financing'),
+(32, 'L-WMC-2026-A944D91A', 2, 1, 35000.00, 875.00, 35875.00, 6, 5979.17, 0.00, 35875.00, 'PENDING', '2026-10-17', NULL, NULL, NULL, NULL, '2026-10-17T17:36:44', '2026-10-17T17:36:44', 0, 'CREDIT_COMMITTEE', FALSE, NULL, 1, 'PRESIDENT', 'Commercial Venture Capital'),
+(33, 'L-WMC-2026-AB3FE649', 2, 1, 60000.00, 1500.00, 61500.00, 6, 10250.00, 0.00, 61500.00, 'ACTIVE', '2026-10-17', '2026-10-17', '2026-10-17', '2026-11-17', '2027-04-17', '2026-10-17T17:45:34', '2026-10-17T17:45:34', 100, 'DISBURSED', FALSE, NULL, NULL, NULL, 'Professional Equipment Acquisition'),
+(34, 'L-WMC-2026-D1EFAC40', 2, 1, 50000.00, 1250.00, 51250.00, 4, 12812.50, 0.00, 51250.00, 'ACTIVE', '2026-10-17', '2026-10-17', '2026-10-17', '2026-11-17', '2027-02-17', '2026-10-17T17:45:35', '2026-10-17T17:45:35', 100, 'DISBURSED', TRUE, NULL, NULL, NULL, 'Medical Emergency Financing'),
+(35, 'L-WMC-2026-9F3D31BD', 2, 1, 35000.00, 875.00, 35875.00, 6, 5979.17, 0.00, 35875.00, 'PENDING', '2026-10-17', NULL, NULL, NULL, NULL, '2026-10-17T17:45:35', '2026-10-17T17:45:35', 0, 'CREDIT_COMMITTEE', FALSE, NULL, 1, 'PRESIDENT', 'Commercial Venture Capital'),
+(36, 'L-WMC-2026-7E4740D4', 2, 1, 50000.00, 1250.00, 51250.00, 6, 8541.67, 0.00, 51250.00, 'ACTIVE', '2026-10-17', '2026-10-17', '2026-10-17', '2026-11-17', '2027-04-17', '2026-10-17T18:18:47', '2026-10-17T18:18:47', 100, 'DISBURSED', TRUE, NULL, NULL, NULL, 'Working capital financing with peer co-signers'),
+(37, 'L-WMC-2026-1D603705', 2, 1, 30000.00, 750.00, 30750.00, 6, 5125.00, 0.00, 30750.00, 'PENDING', '2026-10-17', NULL, NULL, NULL, NULL, '2026-10-17T18:18:47', '2026-10-17T18:18:47', 0, 'CREDIT_COMMITTEE', FALSE, NULL, NULL, NULL, 'Invalid self-guaranteed loan'),
+(38, 'L-WMC-2026-679EA013', 2, 1, 60000.00, 1500.00, 61500.00, 6, 10250.00, 0.00, 61500.00, 'ACTIVE', '2026-10-17', '2026-10-17', '2026-10-17', '2026-11-17', '2027-04-17', '2026-10-17T18:19:22', '2026-10-17T18:19:22', 100, 'DISBURSED', FALSE, NULL, NULL, NULL, 'Professional Equipment Acquisition'),
+(39, 'L-WMC-2026-AD838415', 2, 1, 50000.00, 1250.00, 51250.00, 4, 12812.50, 0.00, 51250.00, 'ACTIVE', '2026-10-17', '2026-10-17', '2026-10-17', '2026-11-17', '2027-02-17', '2026-10-17T18:19:22', '2026-10-17T18:19:22', 100, 'DISBURSED', TRUE, NULL, NULL, NULL, 'Medical Emergency Financing'),
+(40, 'L-WMC-2026-B635183D', 2, 1, 35000.00, 875.00, 35875.00, 6, 5979.17, 0.00, 35875.00, 'PENDING', '2026-10-17', NULL, NULL, NULL, NULL, '2026-10-17T18:19:22', '2026-10-17T18:19:22', 0, 'CREDIT_COMMITTEE', FALSE, NULL, 1, 'PRESIDENT', 'Commercial Venture Capital'),
+(41, 'L-WMC-2026-4D8EEC21', 2, 1, 50000.00, 1250.00, 51250.00, 6, 8541.67, 0.00, 51250.00, 'ACTIVE', '2026-10-17', '2026-10-17', '2026-10-17', '2026-11-17', '2027-04-17', '2026-10-17T18:48:37', '2026-10-17T18:48:37', 100, 'DISBURSED', TRUE, NULL, NULL, NULL, 'Working capital financing with peer co-signers'),
+(42, 'L-WMC-2026-99F364E9', 2, 1, 30000.00, 750.00, 30750.00, 6, 5125.00, 0.00, 30750.00, 'PENDING', '2026-10-17', NULL, NULL, NULL, NULL, '2026-10-17T18:48:37', '2026-10-17T18:48:37', 0, 'CREDIT_COMMITTEE', FALSE, NULL, NULL, NULL, 'Invalid self-guaranteed loan'),
+(43, 'L-WMC-2026-BD294F9F', 2, 1, 60000.00, 1500.00, 61500.00, 6, 10250.00, 0.00, 61500.00, 'ACTIVE', '2026-10-17', '2026-10-17', '2026-10-17', '2026-11-17', '2027-04-17', '2026-10-17T18:48:47', '2026-10-17T18:48:51', 100, 'DISBURSED', FALSE, NULL, NULL, NULL, 'Professional Equipment Acquisition'),
+(44, 'L-WMC-2026-AF0E02D6', 2, 1, 50000.00, 1250.00, 51250.00, 4, 12812.50, 0.00, 51250.00, 'ACTIVE', '2026-10-17', '2026-10-17', '2026-10-17', '2026-11-17', '2027-02-17', '2026-10-17T18:48:51', '2026-10-17T18:48:51', 100, 'DISBURSED', TRUE, NULL, NULL, NULL, 'Medical Emergency Financing'),
+(45, 'L-WMC-2026-27E5F62A', 2, 1, 35000.00, 875.00, 35875.00, 6, 5979.17, 0.00, 35875.00, 'PENDING', '2026-10-17', NULL, NULL, NULL, NULL, '2026-10-17T18:48:51', '2026-10-17T18:48:52', 0, 'CREDIT_COMMITTEE', FALSE, NULL, 1, 'PRESIDENT', 'Commercial Venture Capital'),
+(46, 'L-WMC-2026-D07A52C6', 15, 1, 70000.00, 1750.00, 71750.00, 6, 11958.33, 0.00, 71750.00, 'DECLINED', '2026-10-18', NULL, NULL, NULL, NULL, '2026-10-18T05:49:38', '2026-10-18T05:55:12', 33, 'FINANCIAL_SECRETARY', FALSE, 'Yusf Adebowale not qualified as guarantor', 1, 'PRESIDENT', 'Personal'),
+(47, 'L-WMC-2026-52DC9B5C', 2, 1, 50000.00, 1250.00, 51250.00, 6, 8541.67, 0.00, 51250.00, 'ACTIVE', '2026-10-18', '2026-10-18', '2026-10-18', '2026-11-18', '2027-04-18', '2026-10-18T06:21:57', '2026-10-18T06:21:58', 100, 'DISBURSED', TRUE, NULL, NULL, NULL, 'Working capital financing with peer co-signers'),
+(48, 'L-WMC-2026-57B87A63', 2, 1, 30000.00, 750.00, 30750.00, 6, 5125.00, 0.00, 30750.00, 'PENDING', '2026-10-18', NULL, NULL, NULL, NULL, '2026-10-18T06:21:57', '2026-10-18T06:21:57', 0, 'CREDIT_COMMITTEE', FALSE, NULL, NULL, NULL, 'Invalid self-guaranteed loan'),
+(49, 'L-WMC-2026-D9BF39D8', 2, 1, 50000.00, 1250.00, 51250.00, 3, 17083.33, 0.00, 51250.00, 'PENDING', '2026-10-18', NULL, NULL, NULL, NULL, '2026-10-18T06:24:00', '2026-10-18T06:24:00', 0, 'CREDIT_COMMITTEE', FALSE, NULL, NULL, NULL, 'Working capital facility testing guarantor workflow'),
+(50, 'L-WMC-2026-BA661222', 2, 1, 60000.00, 1500.00, 61500.00, 6, 10250.00, 0.00, 61500.00, 'ACTIVE', '2026-10-18', '2026-10-18', '2026-10-18', '2026-11-18', '2027-04-18', '2026-10-18T06:24:14', '2026-10-18T06:24:15', 100, 'DISBURSED', FALSE, NULL, NULL, NULL, 'Professional Equipment Acquisition')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.loans (id, loan_reference, member_id, product_id, principal_amount, admin_cost_fee, total_amount_payable, tenure_months, monthly_installment, total_paid, outstanding_balance, status, application_date, approval_date, disbursement_date, next_due_date, maturity_date, created_at, updated_at, approval_level_percent, current_approval_stage, presidential_override, decline_reason, declined_by_officer_id, declined_by_role, purpose_narration) VALUES
+(51, 'L-WMC-2026-38376CF0', 2, 1, 50000.00, 1250.00, 51250.00, 4, 12812.50, 0.00, 51250.00, 'ACTIVE', '2026-10-18', '2026-10-18', '2026-10-18', '2026-11-18', '2027-02-18', '2026-10-18T06:24:15', '2026-10-18T06:24:15', 100, 'DISBURSED', TRUE, NULL, NULL, NULL, 'Medical Emergency Financing'),
+(52, 'L-WMC-2026-5C03FBF6', 2, 1, 35000.00, 875.00, 35875.00, 6, 5979.17, 0.00, 35875.00, 'ACTIVE', '2026-10-18', '2026-10-18', '2026-10-18', '2026-11-18', '2027-04-18', '2026-10-18T06:24:16', '2026-10-18T08:15:35', 100, 'DISBURSED', TRUE, NULL, 1, 'PRESIDENT', 'Commercial Venture Capital'),
+(53, 'L-WMC-2026-5DC53AFD', 2, 1, 50000.00, 1250.00, 51250.00, 3, 17083.33, 0.00, 51250.00, 'ACTIVE', '2026-10-18', '2026-10-18', '2026-10-18', '2026-11-18', '2027-01-18', '2026-10-18T06:25:24', '2026-10-18T08:15:29', 100, 'DISBURSED', TRUE, NULL, NULL, NULL, 'Working capital facility testing guarantor workflow'),
+(54, 'L-WMC-2026-8AC49362', 2, 1, 50000.00, 1250.00, 51250.00, 6, 8541.67, 0.00, 51250.00, 'ACTIVE', '2026-10-18', '2026-10-18', '2026-10-18', '2026-11-18', '2027-04-18', '2026-10-18T06:25:54', '2026-10-18T06:25:55', 100, 'DISBURSED', TRUE, NULL, NULL, NULL, 'Working capital financing with peer co-signers'),
+(55, 'L-WMC-2026-E348A1AE', 2, 1, 30000.00, 750.00, 30750.00, 6, 5125.00, 0.00, 30750.00, 'PENDING', '2026-10-18', NULL, NULL, NULL, NULL, '2026-10-18T06:25:54', '2026-10-18T06:25:54', 0, 'CREDIT_COMMITTEE', FALSE, NULL, NULL, NULL, 'Invalid self-guaranteed loan'),
+(56, 'L-WMC-2026-1A71373B', 2, 1, 50000.00, 1250.00, 51250.00, 3, 17083.33, 0.00, 51250.00, 'CANCELLED', '2026-10-18', NULL, NULL, NULL, NULL, '2026-10-18T06:27:28', '2026-10-18T06:27:29', 0, 'CREDIT_COMMITTEE', FALSE, NULL, NULL, NULL, 'Working capital facility testing guarantor workflow'),
+(57, 'L-WMC-2026-4F337287', 2, 1, 50000.00, 1250.00, 51250.00, 3, 17083.33, 0.00, 51250.00, 'CANCELLED', '2026-10-18', NULL, NULL, NULL, NULL, '2026-10-18T06:29:34', '2026-10-18T06:29:36', 0, 'CREDIT_COMMITTEE', FALSE, NULL, NULL, NULL, 'Working capital facility testing guarantor workflow'),
+(58, 'L-WMC-2026-27B0D1DA', 2, 1, 50000.00, 1250.00, 51250.00, 6, 8541.67, 0.00, 51250.00, 'ACTIVE', '2026-10-18', '2026-10-18', '2026-10-18', '2026-11-18', '2027-04-18', '2026-10-18T06:29:41', '2026-10-18T06:29:41', 100, 'DISBURSED', TRUE, NULL, NULL, NULL, 'Working capital financing with peer co-signers'),
+(59, 'L-WMC-2026-75F84930', 2, 1, 30000.00, 750.00, 30750.00, 6, 5125.00, 0.00, 30750.00, 'PENDING', '2026-10-18', NULL, NULL, NULL, NULL, '2026-10-18T06:29:41', '2026-10-18T06:29:41', 0, 'CREDIT_COMMITTEE', FALSE, NULL, NULL, NULL, 'Invalid self-guaranteed loan'),
+(60, 'L-WMC-2026-748AE3C6', 2, 1, 50000.00, 1250.00, 51250.00, 3, 17083.33, 0.00, 51250.00, 'CANCELLED', '2026-10-18', NULL, NULL, NULL, NULL, '2026-10-18T06:30:15', '2026-10-18T06:30:15', 0, 'CREDIT_COMMITTEE', FALSE, NULL, NULL, NULL, 'Working capital facility testing guarantor workflow'),
+(61, 'L-WMC-2026-17C9383B', 2, 1, 50000.00, 1250.00, 51250.00, 3, 17083.33, 0.00, 51250.00, 'CANCELLED', '2026-10-18', NULL, NULL, NULL, NULL, '2026-10-18T06:30:50', '2026-10-18T06:30:51', 0, 'CREDIT_COMMITTEE', FALSE, NULL, NULL, NULL, 'Working capital facility testing guarantor workflow'),
+(62, 'L-WMC-2026-03F9082A', 2, 1, 50000.00, 1250.00, 51250.00, 3, 17083.33, 0.00, 51250.00, 'CANCELLED', '2026-10-18', NULL, NULL, NULL, NULL, '2026-10-18T06:32:30', '2026-10-18T06:32:30', 0, 'CREDIT_COMMITTEE', FALSE, NULL, NULL, NULL, 'Working capital facility testing guarantor workflow'),
+(63, 'L-WMC-2026-F0C66457', 2, 1, 50000.00, 1250.00, 51250.00, 6, 8541.67, 0.00, 51250.00, 'ACTIVE', '2026-10-18', '2026-10-18', '2026-10-18', '2026-11-18', '2027-04-18', '2026-10-18T06:33:13', '2026-10-18T06:33:13', 100, 'DISBURSED', TRUE, NULL, NULL, NULL, 'Working capital financing with peer co-signers'),
+(64, 'L-WMC-2026-A93658BC', 2, 1, 30000.00, 750.00, 30750.00, 6, 5125.00, 0.00, 30750.00, 'PENDING', '2026-10-18', NULL, NULL, NULL, NULL, '2026-10-18T06:33:13', '2026-10-18T06:33:13', 0, 'CREDIT_COMMITTEE', FALSE, NULL, NULL, NULL, 'Invalid self-guaranteed loan'),
+(65, 'L-WMC-2026-B87102B4', 2, 1, 50000.00, 1250.00, 51250.00, 3, 17083.33, 0.00, 51250.00, 'CANCELLED', '2026-10-18', NULL, NULL, NULL, NULL, '2026-10-18T06:58:27', '2026-10-18T06:58:27', 0, 'CREDIT_COMMITTEE', FALSE, NULL, NULL, NULL, 'Working capital facility testing guarantor workflow'),
+(66, 'L-WMC-2026-73031A15', 2, 1, 50000.00, 1250.00, 51250.00, 6, 8541.67, 0.00, 51250.00, 'ACTIVE', '2026-10-18', '2026-10-18', '2026-10-18', '2026-11-18', '2027-04-18', '2026-10-18T06:58:33', '2026-10-18T06:58:33', 100, 'DISBURSED', TRUE, NULL, NULL, NULL, 'Working capital financing with peer co-signers'),
+(67, 'L-WMC-2026-CFA7F57A', 2, 1, 30000.00, 750.00, 30750.00, 6, 5125.00, 0.00, 30750.00, 'PENDING', '2026-10-18', NULL, NULL, NULL, NULL, '2026-10-18T06:58:33', '2026-10-18T06:58:33', 0, 'GUARANTOR_CONSENT', FALSE, NULL, NULL, NULL, 'Invalid self-guaranteed loan'),
+(68, 'L-WMC-2026-BF61E7B5', 2, 1, 60000.00, 1500.00, 61500.00, 6, 10250.00, 0.00, 61500.00, 'ACTIVE', '2026-10-18', '2026-10-18', '2026-10-18', '2026-11-18', '2027-04-18', '2026-10-18T07:15:25', '2026-10-18T07:15:25', 100, 'DISBURSED', FALSE, NULL, NULL, NULL, 'Professional Equipment Acquisition'),
+(69, 'L-WMC-2026-378B202E', 2, 1, 50000.00, 1250.00, 51250.00, 4, 12812.50, 0.00, 51250.00, 'ACTIVE', '2026-10-18', '2026-10-18', '2026-10-18', '2026-11-18', '2027-02-18', '2026-10-18T07:15:25', '2026-10-18T07:15:25', 100, 'DISBURSED', TRUE, NULL, NULL, NULL, 'Medical Emergency Financing'),
+(70, 'L-WMC-2026-FE09F811', 2, 1, 35000.00, 875.00, 35875.00, 6, 5979.17, 0.00, 35875.00, 'PENDING', '2026-10-18', NULL, NULL, NULL, NULL, '2026-10-18T07:15:25', '2026-10-18T07:15:25', 0, 'CREDIT_COMMITTEE', FALSE, NULL, 1, 'PRESIDENT', 'Commercial Venture Capital'),
+(71, 'L-WMC-2026-661009D9', 2, 1, 60000.00, 1500.00, 61500.00, 6, 10250.00, 0.00, 61500.00, 'ACTIVE', '2026-10-18', '2026-10-18', '2026-10-18', '2026-11-18', '2027-04-18', '2026-10-18T07:20:14', '2026-10-18T07:20:14', 100, 'DISBURSED', FALSE, NULL, NULL, NULL, 'Professional Equipment Acquisition'),
+(72, 'L-WMC-2026-D682DCB3', 2, 1, 50000.00, 1250.00, 51250.00, 4, 12812.50, 0.00, 51250.00, 'ACTIVE', '2026-10-18', '2026-10-18', '2026-10-18', '2026-11-18', '2027-02-18', '2026-10-18T07:20:14', '2026-10-18T07:20:14', 100, 'DISBURSED', TRUE, NULL, NULL, NULL, 'Medical Emergency Financing'),
+(73, 'L-WMC-2026-7F8EAF05', 2, 1, 35000.00, 875.00, 35875.00, 6, 5979.17, 0.00, 35875.00, 'PENDING', '2026-10-18', NULL, NULL, NULL, NULL, '2026-10-18T07:20:14', '2026-10-18T07:20:14', 0, 'CREDIT_COMMITTEE', FALSE, NULL, 1, 'PRESIDENT', 'Commercial Venture Capital'),
+(74, 'L-WMC-2026-143C4A29', 2, 1, 50000.00, 1250.00, 51250.00, 6, 8541.67, 0.00, 51250.00, 'ACTIVE', '2026-10-18', '2026-10-18', '2026-10-18', '2026-11-18', '2027-04-18', '2026-10-18T07:20:41', '2026-10-18T07:20:41', 100, 'DISBURSED', TRUE, NULL, NULL, NULL, 'Working capital financing with peer co-signers'),
+(75, 'L-WMC-2026-A635953C', 2, 1, 30000.00, 750.00, 30750.00, 6, 5125.00, 0.00, 30750.00, 'PENDING', '2026-10-18', NULL, NULL, NULL, NULL, '2026-10-18T07:20:41', '2026-10-18T07:20:41', 0, 'GUARANTOR_CONSENT', FALSE, NULL, NULL, NULL, 'Invalid self-guaranteed loan'),
+(76, 'L-WMC-2026-553AB4D4', 2, 1, 50000.00, 1250.00, 51250.00, 3, 17083.33, 200000.00, 30000.00, 'ACTIVE', '2026-10-18', NULL, NULL, NULL, NULL, '2026-10-18T07:20:53', '2026-10-18T07:57:46', 0, 'CREDIT_COMMITTEE', FALSE, NULL, NULL, NULL, 'Working capital facility testing guarantor workflow'),
+(77, 'L-WMC-2026-1788CB66', 2, 1, 60000.00, 1500.00, 61500.00, 6, 10250.00, 0.00, 61500.00, 'ACTIVE', '2026-10-18', '2026-10-18', '2026-10-18', '2026-11-18', '2027-04-18', '2026-10-18T07:58:17', '2026-10-18T07:58:18', 100, 'DISBURSED', FALSE, NULL, NULL, NULL, 'Professional Equipment Acquisition'),
+(78, 'L-WMC-2026-5ECA7E1D', 2, 1, 50000.00, 1250.00, 51250.00, 4, 12812.50, 0.00, 51250.00, 'ACTIVE', '2026-10-18', '2026-10-18', '2026-10-18', '2026-11-18', '2027-02-18', '2026-10-18T07:58:18', '2026-10-18T07:58:18', 100, 'DISBURSED', TRUE, NULL, NULL, NULL, 'Medical Emergency Financing'),
+(79, 'L-WMC-2026-203D251B', 2, 1, 35000.00, 875.00, 35875.00, 6, 5979.17, 0.00, 35875.00, 'PENDING', '2026-10-18', NULL, NULL, NULL, NULL, '2026-10-18T07:58:18', '2026-10-18T07:58:18', 0, 'CREDIT_COMMITTEE', FALSE, NULL, 1, 'PRESIDENT', 'Commercial Venture Capital'),
+(80, 'L-WMC-2026-8D5FD046', 2, 1, 50000.00, 1250.00, 51250.00, 6, 8541.67, 0.00, 51250.00, 'ACTIVE', '2026-10-18', '2026-10-18', '2026-10-18', '2026-11-18', '2027-04-18', '2026-10-18T07:59:33', '2026-10-18T07:59:33', 100, 'DISBURSED', TRUE, NULL, NULL, NULL, 'Working capital financing with peer co-signers'),
+(81, 'L-WMC-2026-C303AC63', 2, 1, 30000.00, 750.00, 30750.00, 6, 5125.00, 0.00, 30750.00, 'PENDING', '2026-10-18', NULL, NULL, NULL, NULL, '2026-10-18T07:59:33', '2026-10-18T07:59:33', 0, 'GUARANTOR_CONSENT', FALSE, NULL, NULL, NULL, 'Invalid self-guaranteed loan'),
+(82, 'L-WMC-2026-9CDA5F1F', 2, 1, 50000.00, 1250.00, 51250.00, 3, 17083.33, 100000.00, 30000.00, 'ACTIVE', '2026-10-18', NULL, NULL, NULL, NULL, '2026-10-18T07:59:46', '2026-10-18T08:00:18', 0, 'CREDIT_COMMITTEE', FALSE, NULL, NULL, NULL, 'Working capital facility testing guarantor workflow'),
+(83, 'L-WMC-2026-411C590A', 2, 1, 60000.00, 1500.00, 61500.00, 6, 10250.00, 0.00, 61500.00, 'ACTIVE', '2026-10-18', '2026-10-18', '2026-10-18', '2026-11-18', '2027-04-18', '2026-10-18T08:00:44', '2026-10-18T08:00:44', 100, 'DISBURSED', FALSE, NULL, NULL, NULL, 'Professional Equipment Acquisition'),
+(84, 'L-WMC-2026-42F4BAA4', 2, 1, 50000.00, 1250.00, 51250.00, 4, 12812.50, 0.00, 51250.00, 'ACTIVE', '2026-10-18', '2026-10-18', '2026-10-18', '2026-11-18', '2027-02-18', '2026-10-18T08:00:44', '2026-10-18T08:00:44', 100, 'DISBURSED', TRUE, NULL, NULL, NULL, 'Medical Emergency Financing'),
+(85, 'L-WMC-2026-3D25985F', 2, 1, 35000.00, 875.00, 35875.00, 6, 5979.17, 0.00, 35875.00, 'PENDING', '2026-10-18', NULL, NULL, NULL, NULL, '2026-10-18T08:00:44', '2026-10-18T08:00:45', 0, 'CREDIT_COMMITTEE', FALSE, NULL, 1, 'PRESIDENT', 'Commercial Venture Capital'),
+(86, 'L-WMC-2026-D1496574', 2, 1, 50000.00, 1250.00, 51250.00, 6, 8541.67, 0.00, 51250.00, 'ACTIVE', '2026-10-18', '2026-10-18', '2026-10-18', '2026-11-18', '2027-04-18', '2026-10-18T08:00:49', '2026-10-18T08:00:49', 100, 'DISBURSED', TRUE, NULL, NULL, NULL, 'Working capital financing with peer co-signers'),
+(87, 'L-WMC-2026-9F5F9B7F', 2, 1, 30000.00, 750.00, 30750.00, 6, 5125.00, 0.00, 30750.00, 'PENDING', '2026-10-18', NULL, NULL, NULL, NULL, '2026-10-18T08:00:49', '2026-10-18T08:00:49', 0, 'GUARANTOR_CONSENT', FALSE, NULL, NULL, NULL, 'Invalid self-guaranteed loan'),
+(88, 'L-WMC-2026-3EB551D4', 2, 1, 50000.00, 1250.00, 51250.00, 3, 17083.33, 130000.00, 0.00, 'COMPLETED', '2026-10-18', NULL, NULL, NULL, NULL, '2026-10-18T08:00:54', '2026-10-18T08:15:01', 0, 'CREDIT_COMMITTEE', FALSE, NULL, NULL, NULL, 'Working capital facility testing guarantor workflow'),
+(89, 'L-WMC-2026-B2B13EB5', 2, 1, 60000.00, 1500.00, 61500.00, 6, 10250.00, 0.00, 61500.00, 'ACTIVE', '2026-10-18', '2026-10-18', '2026-10-18', '2026-11-18', '2027-04-18', '2026-10-18T08:02:25', '2026-10-18T08:02:25', 100, 'DISBURSED', FALSE, NULL, NULL, NULL, 'Professional Equipment Acquisition'),
+(90, 'L-WMC-2026-0A354FC6', 2, 1, 50000.00, 1250.00, 51250.00, 4, 12812.50, 0.00, 51250.00, 'ACTIVE', '2026-10-18', '2026-10-18', '2026-10-18', '2026-11-18', '2027-02-18', '2026-10-18T08:02:25', '2026-10-18T08:02:25', 100, 'DISBURSED', TRUE, NULL, NULL, NULL, 'Medical Emergency Financing'),
+(91, 'L-WMC-2026-9B6E7349', 2, 1, 35000.00, 875.00, 35875.00, 6, 5979.17, 0.00, 35875.00, 'PENDING', '2026-10-18', NULL, NULL, NULL, NULL, '2026-10-18T08:02:26', '2026-10-18T08:02:26', 0, 'CREDIT_COMMITTEE', FALSE, NULL, 1, 'PRESIDENT', 'Commercial Venture Capital'),
+(92, 'L-WMC-2026-ED18C66A', 2, 1, 50000.00, 1250.00, 51250.00, 6, 8541.67, 0.00, 51250.00, 'ACTIVE', '2026-10-18', '2026-10-18', '2026-10-18', '2026-11-18', '2027-04-18', '2026-10-18T08:02:35', '2026-10-18T08:02:35', 100, 'DISBURSED', TRUE, NULL, NULL, NULL, 'Working capital financing with peer co-signers'),
+(93, 'L-WMC-2026-A1B6EE54', 2, 1, 30000.00, 750.00, 30750.00, 6, 5125.00, 0.00, 30750.00, 'PENDING', '2026-10-18', NULL, NULL, NULL, NULL, '2026-10-18T08:02:35', '2026-10-18T08:02:35', 0, 'GUARANTOR_CONSENT', FALSE, NULL, NULL, NULL, 'Invalid self-guaranteed loan'),
+(94, 'L-WMC-2026-7BF7ED26', 2, 1, 50000.00, 1250.00, 51250.00, 3, 17083.33, 0.00, 51250.00, 'CANCELLED', '2026-10-18', NULL, NULL, NULL, NULL, '2026-10-18T08:02:44', '2026-10-18T08:02:44', 0, 'CREDIT_COMMITTEE', FALSE, NULL, NULL, NULL, 'Working capital facility testing guarantor workflow'),
+(95, 'L-WMC-2026-4708585A', 2, 1, 60000.00, 1500.00, 61500.00, 6, 10250.00, 0.00, 61500.00, 'ACTIVE', '2026-10-18', '2026-10-18', '2026-10-18', '2026-11-18', '2027-04-18', '2026-10-18T08:26:15', '2026-10-18T08:26:15', 100, 'DISBURSED', FALSE, NULL, NULL, NULL, 'Professional Equipment Acquisition'),
+(96, 'L-WMC-2026-6F0F1438', 2, 1, 50000.00, 1250.00, 51250.00, 4, 12812.50, 0.00, 51250.00, 'ACTIVE', '2026-10-18', '2026-10-18', '2026-10-18', '2026-11-18', '2027-02-18', '2026-10-18T08:26:15', '2026-10-18T08:26:16', 100, 'DISBURSED', TRUE, NULL, NULL, NULL, 'Medical Emergency Financing'),
+(97, 'L-WMC-2026-14744738', 2, 1, 35000.00, 875.00, 35875.00, 6, 5979.17, 50000.00, 30000.00, 'ACTIVE', '2026-10-18', NULL, NULL, NULL, NULL, '2026-10-18T08:26:16', '2026-10-18T08:26:48', 0, 'CREDIT_COMMITTEE', FALSE, NULL, 1, 'PRESIDENT', 'Commercial Venture Capital'),
+(98, 'L-WMC-2026-4FE7FD7F', 2, 1, 60000.00, 1500.00, 61500.00, 6, 10250.00, 0.00, 61500.00, 'ACTIVE', '2026-10-18', '2026-10-18', '2026-10-18', '2026-11-18', '2027-04-18', '2026-10-18T08:57:00', '2026-10-18T08:57:00', 100, 'DISBURSED', FALSE, NULL, NULL, NULL, 'Professional Equipment Acquisition'),
+(99, 'L-WMC-2026-A08C388B', 2, 1, 50000.00, 1250.00, 51250.00, 4, 12812.50, 0.00, 51250.00, 'ACTIVE', '2026-10-18', '2026-10-18', '2026-10-18', '2026-11-18', '2027-02-18', '2026-10-18T08:57:01', '2026-10-18T08:57:01', 100, 'DISBURSED', TRUE, NULL, NULL, NULL, 'Medical Emergency Financing'),
+(100, 'L-WMC-2026-A30ED407', 2, 1, 35000.00, 875.00, 35875.00, 6, 5979.17, 50000.00, 30000.00, 'ACTIVE', '2026-10-18', NULL, NULL, NULL, NULL, '2026-10-18T08:57:01', '2026-10-18T08:57:12', 0, 'CREDIT_COMMITTEE', FALSE, NULL, 1, 'PRESIDENT', 'Commercial Venture Capital')
+ON CONFLICT DO NOTHING;
+
+SELECT setval(pg_get_serial_sequence('public.loans', 'id'), COALESCE((SELECT MAX(id) FROM public.loans), 1), true);
+
+-- ---------------------------------------------------------------------
+-- Table: loan_approval_steps (225 records)
+-- ---------------------------------------------------------------------
+INSERT INTO public.loan_approval_steps (id, loan_id, step_name, officer_id, officer_role, action, comments, percentage_granted, created_at) VALUES
+(1, 1, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-17T11:51:59'),
+(2, 2, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-17T11:56:09'),
+(3, 3, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-17T12:13:51'),
+(4, 4, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-17T12:15:27'),
+(5, 4, 'CREDIT_COMMITTEE', 1, 'PRESIDENT', 'APPROVED', 'Credit score and savings collateral verified satisfactory.', 33, '2026-10-17T12:15:27'),
+(6, 4, 'FINANCIAL_SECRETARY', 1, 'PRESIDENT', 'APPROVED', 'Monthly remittance capacity and 2x savings limit confirmed.', 66, '2026-10-17T12:15:27'),
+(7, 4, 'TREASURER', 1, 'PRESIDENT', 'APPROVED', 'Disbursement approved and loan ledger created.', 100, '2026-10-17T12:15:28'),
+(8, 5, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-17T12:15:54'),
+(9, 5, 'CREDIT_COMMITTEE', 1, 'PRESIDENT', 'APPROVED', 'Credit score and savings collateral verified satisfactory.', 33, '2026-10-17T12:15:54'),
+(10, 5, 'FINANCIAL_SECRETARY', 1, 'PRESIDENT', 'APPROVED', 'Monthly remittance capacity and 2x savings limit confirmed.', 66, '2026-10-17T12:15:54'),
+(11, 5, 'TREASURER', 1, 'PRESIDENT', 'APPROVED', 'Disbursement approved and loan ledger created.', 100, '2026-10-17T12:15:54'),
+(12, 6, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-17T12:15:54'),
+(13, 6, 'PRESIDENTIAL_OVERRIDE', 1, 'PRESIDENT', 'OVERRIDDEN', 'Presidential Superior Override invoked for emergency healthcare assistance.', 100, '2026-10-17T12:15:54'),
+(14, 7, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-17T12:15:54'),
+(15, 7, 'CREDIT_COMMITTEE', 1, 'PRESIDENT', 'DECLINED', 'Requested amount exceeds 2x unencumbered savings cap.', 0, '2026-10-17T12:15:54'),
+(16, 7, 'APPEAL_RESOLUTION', 1, 'PRESIDENT', 'APPROVED', 'Appeal approved & reinstated: Supplementary proof verified. Approved under presidential arbitration.', 0, '2026-10-17T12:15:55'),
+(17, 8, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-17T12:16:54'),
+(18, 8, 'CREDIT_COMMITTEE', 1, 'PRESIDENT', 'APPROVED', 'Credit score and savings collateral verified satisfactory.', 33, '2026-10-17T12:16:54'),
+(19, 8, 'FINANCIAL_SECRETARY', 1, 'PRESIDENT', 'APPROVED', 'Monthly remittance capacity and 2x savings limit confirmed.', 66, '2026-10-17T12:16:54'),
+(20, 8, 'TREASURER', 1, 'PRESIDENT', 'APPROVED', 'Disbursement approved and loan ledger created.', 100, '2026-10-17T12:16:54'),
+(21, 9, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-17T12:16:54'),
+(22, 9, 'PRESIDENTIAL_OVERRIDE', 1, 'PRESIDENT', 'OVERRIDDEN', 'Presidential Superior Override invoked for emergency healthcare assistance.', 100, '2026-10-17T12:16:54'),
+(23, 10, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-17T12:18:38'),
+(24, 10, 'CREDIT_COMMITTEE', 1, 'PRESIDENT', 'APPROVED', 'Credit score and savings collateral verified satisfactory.', 33, '2026-10-17T12:18:38'),
+(25, 10, 'FINANCIAL_SECRETARY', 1, 'PRESIDENT', 'APPROVED', 'Monthly remittance capacity and 2x savings limit confirmed.', 66, '2026-10-17T12:18:38'),
+(26, 10, 'TREASURER', 1, 'PRESIDENT', 'APPROVED', 'Disbursement approved and loan ledger created.', 100, '2026-10-17T12:18:38'),
+(27, 11, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-17T12:18:38'),
+(28, 11, 'PRESIDENTIAL_OVERRIDE', 1, 'PRESIDENT', 'OVERRIDDEN', 'Presidential Superior Override invoked for emergency healthcare assistance.', 100, '2026-10-17T12:18:39'),
+(29, 12, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-17T12:18:39'),
+(30, 12, 'CREDIT_COMMITTEE', 1, 'PRESIDENT', 'DECLINED', 'Requested amount exceeds 2x unencumbered savings cap.', 0, '2026-10-17T12:18:39'),
+(31, 12, 'APPEAL_RESOLUTION', 1, 'PRESIDENT', 'APPROVED', 'Appeal approved & reinstated: Supplementary proof verified. Approved under presidential arbitration.', 0, '2026-10-17T12:18:39'),
+(32, 13, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-17T12:19:36'),
+(33, 13, 'CREDIT_COMMITTEE', 1, 'PRESIDENT', 'APPROVED', 'Credit score and savings collateral verified satisfactory.', 33, '2026-10-17T12:19:36'),
+(34, 13, 'FINANCIAL_SECRETARY', 1, 'PRESIDENT', 'APPROVED', 'Monthly remittance capacity and 2x savings limit confirmed.', 66, '2026-10-17T12:19:36'),
+(35, 13, 'TREASURER', 1, 'PRESIDENT', 'APPROVED', 'Disbursement approved and loan ledger created.', 100, '2026-10-17T12:19:36'),
+(36, 14, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-17T12:19:36'),
+(37, 14, 'PRESIDENTIAL_OVERRIDE', 1, 'PRESIDENT', 'OVERRIDDEN', 'Presidential Superior Override invoked for emergency healthcare assistance.', 100, '2026-10-17T12:19:36'),
+(38, 15, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-17T12:19:36'),
+(39, 15, 'CREDIT_COMMITTEE', 1, 'PRESIDENT', 'DECLINED', 'Requested amount exceeds 2x unencumbered savings cap.', 0, '2026-10-17T12:19:36'),
+(40, 15, 'APPEAL_RESOLUTION', 1, 'PRESIDENT', 'APPROVED', 'Appeal approved & reinstated: Supplementary proof verified. Approved under presidential arbitration.', 0, '2026-10-17T12:19:37'),
+(41, 16, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-17T12:20:54'),
+(42, 16, 'CREDIT_COMMITTEE', 1, 'PRESIDENT', 'APPROVED', 'Credit score and savings collateral verified satisfactory.', 33, '2026-10-17T12:20:54'),
+(43, 16, 'FINANCIAL_SECRETARY', 1, 'PRESIDENT', 'APPROVED', 'Monthly remittance capacity and 2x savings limit confirmed.', 66, '2026-10-17T12:20:54'),
+(44, 16, 'TREASURER', 1, 'PRESIDENT', 'APPROVED', 'Disbursement approved and loan ledger created.', 100, '2026-10-17T12:20:55'),
+(45, 17, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-17T12:20:55'),
+(46, 17, 'PRESIDENTIAL_OVERRIDE', 1, 'PRESIDENT', 'OVERRIDDEN', 'Presidential Superior Override invoked for emergency healthcare assistance.', 100, '2026-10-17T12:20:55'),
+(47, 18, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-17T12:20:55'),
+(48, 18, 'CREDIT_COMMITTEE', 1, 'PRESIDENT', 'DECLINED', 'Requested amount exceeds 2x unencumbered savings cap.', 0, '2026-10-17T12:20:55'),
+(49, 18, 'APPEAL_RESOLUTION', 1, 'PRESIDENT', 'APPROVED', 'Appeal approved & reinstated: Supplementary proof verified. Approved under presidential arbitration.', 0, '2026-10-17T12:20:55'),
+(50, 19, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-17T12:21:31')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.loan_approval_steps (id, loan_id, step_name, officer_id, officer_role, action, comments, percentage_granted, created_at) VALUES
+(51, 19, 'CREDIT_COMMITTEE', 1, 'PRESIDENT', 'APPROVED', 'Credit score and savings collateral verified satisfactory.', 33, '2026-10-17T12:21:31'),
+(52, 19, 'FINANCIAL_SECRETARY', 1, 'PRESIDENT', 'APPROVED', 'Monthly remittance capacity and 2x savings limit confirmed.', 66, '2026-10-17T12:21:31'),
+(53, 19, 'TREASURER', 1, 'PRESIDENT', 'APPROVED', 'Disbursement approved and loan ledger created.', 100, '2026-10-17T12:21:31'),
+(54, 20, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-17T12:21:31'),
+(55, 20, 'PRESIDENTIAL_OVERRIDE', 1, 'PRESIDENT', 'OVERRIDDEN', 'Presidential Superior Override invoked for emergency healthcare assistance.', 100, '2026-10-17T12:21:31'),
+(56, 21, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-17T12:21:31'),
+(57, 21, 'CREDIT_COMMITTEE', 1, 'PRESIDENT', 'DECLINED', 'Requested amount exceeds 2x unencumbered savings cap.', 0, '2026-10-17T12:21:31'),
+(58, 21, 'APPEAL_RESOLUTION', 1, 'PRESIDENT', 'APPROVED', 'Appeal approved & reinstated: Supplementary proof verified. Approved under presidential arbitration.', 0, '2026-10-17T12:21:32'),
+(59, 22, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-17T12:22:34'),
+(60, 22, 'CREDIT_COMMITTEE', 1, 'PRESIDENT', 'APPROVED', 'Credit score and savings collateral verified satisfactory.', 33, '2026-10-17T12:22:34'),
+(61, 22, 'FINANCIAL_SECRETARY', 1, 'PRESIDENT', 'APPROVED', 'Monthly remittance capacity and 2x savings limit confirmed.', 66, '2026-10-17T12:22:34'),
+(62, 22, 'TREASURER', 1, 'PRESIDENT', 'APPROVED', 'Disbursement approved and loan ledger created.', 100, '2026-10-17T12:22:34'),
+(63, 23, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-17T12:22:34'),
+(64, 23, 'PRESIDENTIAL_OVERRIDE', 1, 'PRESIDENT', 'OVERRIDDEN', 'Presidential Superior Override invoked for emergency healthcare assistance.', 100, '2026-10-17T12:22:35'),
+(65, 24, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-17T12:22:35'),
+(66, 24, 'CREDIT_COMMITTEE', 1, 'PRESIDENT', 'DECLINED', 'Requested amount exceeds 2x unencumbered savings cap.', 0, '2026-10-17T12:22:35'),
+(67, 24, 'APPEAL_RESOLUTION', 1, 'PRESIDENT', 'APPROVED', 'Appeal approved & reinstated: Supplementary proof verified. Approved under presidential arbitration.', 0, '2026-10-17T12:22:35'),
+(68, 25, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-17T12:50:34'),
+(69, 25, 'CREDIT_COMMITTEE', 1, 'PRESIDENT', 'APPROVED', 'Credit score and savings collateral verified satisfactory.', 33, '2026-10-17T12:50:34'),
+(70, 25, 'FINANCIAL_SECRETARY', 1, 'PRESIDENT', 'APPROVED', 'Monthly remittance capacity and 2x savings limit confirmed.', 66, '2026-10-17T12:50:34'),
+(71, 25, 'TREASURER', 1, 'PRESIDENT', 'APPROVED', 'Disbursement approved and loan ledger created.', 100, '2026-10-17T12:50:34'),
+(72, 26, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-17T12:50:34'),
+(73, 26, 'PRESIDENTIAL_OVERRIDE', 1, 'PRESIDENT', 'OVERRIDDEN', 'Presidential Superior Override invoked for emergency healthcare assistance.', 100, '2026-10-17T12:50:34'),
+(74, 27, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-17T12:50:34'),
+(75, 27, 'CREDIT_COMMITTEE', 1, 'PRESIDENT', 'DECLINED', 'Requested amount exceeds 2x unencumbered savings cap.', 0, '2026-10-17T12:50:34'),
+(76, 27, 'APPEAL_RESOLUTION', 1, 'PRESIDENT', 'APPROVED', 'Appeal approved & reinstated: Supplementary proof verified. Approved under presidential arbitration.', 0, '2026-10-17T12:50:35'),
+(77, 28, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-17T17:36:37'),
+(78, 28, 'PRESIDENTIAL_OVERRIDE', 1, 'PRESIDENT', 'OVERRIDDEN', 'Approved with verified peer co-signers per Article 14 Bye-Laws.', 100, '2026-10-17T17:36:37'),
+(79, 30, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-17T17:36:43'),
+(80, 30, 'CREDIT_COMMITTEE', 1, 'PRESIDENT', 'APPROVED', 'Credit score and savings collateral verified satisfactory.', 33, '2026-10-17T17:36:43'),
+(81, 30, 'FINANCIAL_SECRETARY', 1, 'PRESIDENT', 'APPROVED', 'Monthly remittance capacity and 2x savings limit confirmed.', 66, '2026-10-17T17:36:43'),
+(82, 30, 'TREASURER', 1, 'PRESIDENT', 'APPROVED', 'Disbursement approved and loan ledger created.', 100, '2026-10-17T17:36:44'),
+(83, 31, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-17T17:36:44'),
+(84, 31, 'PRESIDENTIAL_OVERRIDE', 1, 'PRESIDENT', 'OVERRIDDEN', 'Presidential Superior Override invoked for emergency healthcare assistance.', 100, '2026-10-17T17:36:44'),
+(85, 32, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-17T17:36:44'),
+(86, 32, 'CREDIT_COMMITTEE', 1, 'PRESIDENT', 'DECLINED', 'Requested amount exceeds 2x unencumbered savings cap.', 0, '2026-10-17T17:36:44'),
+(87, 32, 'APPEAL_RESOLUTION', 1, 'PRESIDENT', 'APPROVED', 'Appeal approved & reinstated: Supplementary proof verified. Approved under presidential arbitration.', 0, '2026-10-17T17:36:44'),
+(88, 33, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-17T17:45:34'),
+(89, 33, 'CREDIT_COMMITTEE', 1, 'PRESIDENT', 'APPROVED', 'Credit score and savings collateral verified satisfactory.', 33, '2026-10-17T17:45:34'),
+(90, 33, 'FINANCIAL_SECRETARY', 1, 'PRESIDENT', 'APPROVED', 'Monthly remittance capacity and 2x savings limit confirmed.', 66, '2026-10-17T17:45:34'),
+(91, 33, 'TREASURER', 1, 'PRESIDENT', 'APPROVED', 'Disbursement approved and loan ledger created.', 100, '2026-10-17T17:45:35'),
+(92, 34, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-17T17:45:35'),
+(93, 34, 'PRESIDENTIAL_OVERRIDE', 1, 'PRESIDENT', 'OVERRIDDEN', 'Presidential Superior Override invoked for emergency healthcare assistance.', 100, '2026-10-17T17:45:35'),
+(94, 35, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-17T17:45:35'),
+(95, 35, 'CREDIT_COMMITTEE', 1, 'PRESIDENT', 'DECLINED', 'Requested amount exceeds 2x unencumbered savings cap.', 0, '2026-10-17T17:45:35'),
+(96, 35, 'APPEAL_RESOLUTION', 1, 'PRESIDENT', 'APPROVED', 'Appeal approved & reinstated: Supplementary proof verified. Approved under presidential arbitration.', 0, '2026-10-17T17:45:35'),
+(97, 36, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-17T18:18:47'),
+(98, 36, 'PRESIDENTIAL_OVERRIDE', 1, 'PRESIDENT', 'OVERRIDDEN', 'Approved with verified peer co-signers per Article 14 Bye-Laws.', 100, '2026-10-17T18:18:47'),
+(99, 38, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-17T18:19:22'),
+(100, 38, 'CREDIT_COMMITTEE', 1, 'PRESIDENT', 'APPROVED', 'Credit score and savings collateral verified satisfactory.', 33, '2026-10-17T18:19:22')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.loan_approval_steps (id, loan_id, step_name, officer_id, officer_role, action, comments, percentage_granted, created_at) VALUES
+(101, 38, 'FINANCIAL_SECRETARY', 1, 'PRESIDENT', 'APPROVED', 'Monthly remittance capacity and 2x savings limit confirmed.', 66, '2026-10-17T18:19:22'),
+(102, 38, 'TREASURER', 1, 'PRESIDENT', 'APPROVED', 'Disbursement approved and loan ledger created.', 100, '2026-10-17T18:19:22'),
+(103, 39, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-17T18:19:22'),
+(104, 39, 'PRESIDENTIAL_OVERRIDE', 1, 'PRESIDENT', 'OVERRIDDEN', 'Presidential Superior Override invoked for emergency healthcare assistance.', 100, '2026-10-17T18:19:22'),
+(105, 40, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-17T18:19:22'),
+(106, 40, 'CREDIT_COMMITTEE', 1, 'PRESIDENT', 'DECLINED', 'Requested amount exceeds 2x unencumbered savings cap.', 0, '2026-10-17T18:19:22'),
+(107, 40, 'APPEAL_RESOLUTION', 1, 'PRESIDENT', 'APPROVED', 'Appeal approved & reinstated: Supplementary proof verified. Approved under presidential arbitration.', 0, '2026-10-17T18:19:23'),
+(108, 41, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-17T18:48:37'),
+(109, 41, 'PRESIDENTIAL_OVERRIDE', 1, 'PRESIDENT', 'OVERRIDDEN', 'Approved with verified peer co-signers per Article 14 Bye-Laws.', 100, '2026-10-17T18:48:37'),
+(110, 43, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-17T18:48:47'),
+(111, 43, 'CREDIT_COMMITTEE', 1, 'PRESIDENT', 'APPROVED', 'Credit score and savings collateral verified satisfactory.', 33, '2026-10-17T18:48:51'),
+(112, 43, 'FINANCIAL_SECRETARY', 1, 'PRESIDENT', 'APPROVED', 'Monthly remittance capacity and 2x savings limit confirmed.', 66, '2026-10-17T18:48:51'),
+(113, 43, 'TREASURER', 1, 'PRESIDENT', 'APPROVED', 'Disbursement approved and loan ledger created.', 100, '2026-10-17T18:48:51'),
+(114, 44, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-17T18:48:51'),
+(115, 44, 'PRESIDENTIAL_OVERRIDE', 1, 'PRESIDENT', 'OVERRIDDEN', 'Presidential Superior Override invoked for emergency healthcare assistance.', 100, '2026-10-17T18:48:51'),
+(116, 45, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-17T18:48:51'),
+(117, 45, 'CREDIT_COMMITTEE', 1, 'PRESIDENT', 'DECLINED', 'Requested amount exceeds 2x unencumbered savings cap.', 0, '2026-10-17T18:48:52'),
+(118, 45, 'APPEAL_RESOLUTION', 1, 'PRESIDENT', 'APPROVED', 'Appeal approved & reinstated: Supplementary proof verified. Approved under presidential arbitration.', 0, '2026-10-17T18:48:52'),
+(119, 46, 'CREDIT_COMMITTEE', 15, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-18T05:49:38'),
+(120, 46, 'CREDIT_COMMITTEE', 2, 'GENERAL_SECRETARY', 'APPROVED', 'Approved', 33, '2026-10-18T05:51:37'),
+(121, 46, 'FINANCIAL_SECRETARY', 1, 'PRESIDENT', 'DECLINED', 'Yusf Adebowale not qualified as guarantor', 33, '2026-10-18T05:55:12'),
+(122, 47, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-18T06:21:57'),
+(123, 47, 'PRESIDENTIAL_OVERRIDE', 1, 'PRESIDENT', 'OVERRIDDEN', 'Approved with verified peer co-signers per Article 14 Bye-Laws.', 100, '2026-10-18T06:21:58'),
+(124, 49, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-18T06:24:00'),
+(125, 50, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-18T06:24:14'),
+(126, 50, 'CREDIT_COMMITTEE', 1, 'PRESIDENT', 'APPROVED', 'Credit score and savings collateral verified satisfactory.', 33, '2026-10-18T06:24:15'),
+(127, 50, 'FINANCIAL_SECRETARY', 1, 'PRESIDENT', 'APPROVED', 'Monthly remittance capacity and 2x savings limit confirmed.', 66, '2026-10-18T06:24:15'),
+(128, 50, 'TREASURER', 1, 'PRESIDENT', 'APPROVED', 'Disbursement approved and loan ledger created.', 100, '2026-10-18T06:24:15'),
+(129, 51, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-18T06:24:15'),
+(130, 51, 'PRESIDENTIAL_OVERRIDE', 1, 'PRESIDENT', 'OVERRIDDEN', 'Presidential Superior Override invoked for emergency healthcare assistance.', 100, '2026-10-18T06:24:15'),
+(131, 52, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-18T06:24:16'),
+(132, 52, 'CREDIT_COMMITTEE', 1, 'PRESIDENT', 'DECLINED', 'Requested amount exceeds 2x unencumbered savings cap.', 0, '2026-10-18T06:24:16'),
+(133, 52, 'APPEAL_RESOLUTION', 1, 'PRESIDENT', 'APPROVED', 'Appeal approved & reinstated: Supplementary proof verified. Approved under presidential arbitration.', 0, '2026-10-18T06:24:16'),
+(134, 53, 'GUARANTOR_CONSENT', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting peer guarantor digital consent.', 0, '2026-10-18T06:25:24'),
+(135, 54, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-18T06:25:54'),
+(136, 54, 'PRESIDENTIAL_OVERRIDE', 1, 'PRESIDENT', 'OVERRIDDEN', 'Approved with verified peer co-signers per Article 14 Bye-Laws.', 100, '2026-10-18T06:25:55'),
+(137, 56, 'GUARANTOR_CONSENT', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting peer guarantor digital consent.', 0, '2026-10-18T06:27:28'),
+(138, 57, 'GUARANTOR_CONSENT', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting peer guarantor digital consent.', 0, '2026-10-18T06:29:35'),
+(139, 58, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-18T06:29:41'),
+(140, 58, 'PRESIDENTIAL_OVERRIDE', 1, 'PRESIDENT', 'OVERRIDDEN', 'Approved with verified peer co-signers per Article 14 Bye-Laws.', 100, '2026-10-18T06:29:41'),
+(141, 60, 'GUARANTOR_CONSENT', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting peer guarantor digital consent.', 0, '2026-10-18T06:30:15'),
+(142, 61, 'GUARANTOR_CONSENT', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting peer guarantor digital consent.', 0, '2026-10-18T06:30:50'),
+(143, 62, 'GUARANTOR_CONSENT', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting peer guarantor digital consent.', 0, '2026-10-18T06:32:30'),
+(144, 63, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-18T06:33:13'),
+(145, 63, 'PRESIDENTIAL_OVERRIDE', 1, 'PRESIDENT', 'OVERRIDDEN', 'Approved with verified peer co-signers per Article 14 Bye-Laws.', 100, '2026-10-18T06:33:13'),
+(146, 65, 'GUARANTOR_CONSENT', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting peer guarantor digital consent.', 0, '2026-10-18T06:58:27'),
+(147, 66, 'GUARANTOR_CONSENT', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting peer guarantor digital consent.', 0, '2026-10-18T06:58:33'),
+(148, 66, 'PRESIDENTIAL_OVERRIDE', 1, 'PRESIDENT', 'OVERRIDDEN', 'Approved with verified peer co-signers per Article 14 Bye-Laws.', 100, '2026-10-18T06:58:33'),
+(149, 68, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-18T07:15:25'),
+(150, 68, 'CREDIT_COMMITTEE', 1, 'PRESIDENT', 'APPROVED', 'Credit score and savings collateral verified satisfactory.', 33, '2026-10-18T07:15:25')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.loan_approval_steps (id, loan_id, step_name, officer_id, officer_role, action, comments, percentage_granted, created_at) VALUES
+(151, 68, 'FINANCIAL_SECRETARY', 1, 'PRESIDENT', 'APPROVED', 'Monthly remittance capacity and 2x savings limit confirmed.', 66, '2026-10-18T07:15:25'),
+(152, 68, 'TREASURER', 1, 'PRESIDENT', 'APPROVED', 'Disbursement approved and loan ledger created.', 100, '2026-10-18T07:15:25'),
+(153, 69, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-18T07:15:25'),
+(154, 69, 'PRESIDENTIAL_OVERRIDE', 1, 'PRESIDENT', 'OVERRIDDEN', 'Presidential Superior Override invoked for emergency healthcare assistance.', 100, '2026-10-18T07:15:25'),
+(155, 70, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-18T07:15:25'),
+(156, 70, 'CREDIT_COMMITTEE', 1, 'PRESIDENT', 'DECLINED', 'Requested amount exceeds 2x unencumbered savings cap.', 0, '2026-10-18T07:15:25'),
+(157, 70, 'APPEAL_RESOLUTION', 1, 'PRESIDENT', 'APPROVED', 'Appeal approved & reinstated: Supplementary proof verified. Approved under presidential arbitration.', 0, '2026-10-18T07:15:25'),
+(158, 71, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-18T07:20:14'),
+(159, 71, 'CREDIT_COMMITTEE', 1, 'PRESIDENT', 'APPROVED', 'Credit score and savings collateral verified satisfactory.', 33, '2026-10-18T07:20:14'),
+(160, 71, 'FINANCIAL_SECRETARY', 1, 'PRESIDENT', 'APPROVED', 'Monthly remittance capacity and 2x savings limit confirmed.', 66, '2026-10-18T07:20:14'),
+(161, 71, 'TREASURER', 1, 'PRESIDENT', 'APPROVED', 'Disbursement approved and loan ledger created.', 100, '2026-10-18T07:20:14'),
+(162, 72, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-18T07:20:14'),
+(163, 72, 'PRESIDENTIAL_OVERRIDE', 1, 'PRESIDENT', 'OVERRIDDEN', 'Presidential Superior Override invoked for emergency healthcare assistance.', 100, '2026-10-18T07:20:14'),
+(164, 73, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-18T07:20:14'),
+(165, 73, 'CREDIT_COMMITTEE', 1, 'PRESIDENT', 'DECLINED', 'Requested amount exceeds 2x unencumbered savings cap.', 0, '2026-10-18T07:20:14'),
+(166, 73, 'APPEAL_RESOLUTION', 1, 'PRESIDENT', 'APPROVED', 'Appeal approved & reinstated: Supplementary proof verified. Approved under presidential arbitration.', 0, '2026-10-18T07:20:14'),
+(167, 74, 'GUARANTOR_CONSENT', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting peer guarantor digital consent.', 0, '2026-10-18T07:20:41'),
+(168, 74, 'PRESIDENTIAL_OVERRIDE', 1, 'PRESIDENT', 'OVERRIDDEN', 'Approved with verified peer co-signers per Article 14 Bye-Laws.', 100, '2026-10-18T07:20:41'),
+(169, 76, 'GUARANTOR_CONSENT', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting peer guarantor digital consent.', 0, '2026-10-18T07:20:53'),
+(170, 77, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-18T07:58:17'),
+(171, 77, 'CREDIT_COMMITTEE', 1, 'PRESIDENT', 'APPROVED', 'Credit score and savings collateral verified satisfactory.', 33, '2026-10-18T07:58:18'),
+(172, 77, 'FINANCIAL_SECRETARY', 1, 'PRESIDENT', 'APPROVED', 'Monthly remittance capacity and 2x savings limit confirmed.', 66, '2026-10-18T07:58:18'),
+(173, 77, 'TREASURER', 1, 'PRESIDENT', 'APPROVED', 'Disbursement approved and loan ledger created.', 100, '2026-10-18T07:58:18'),
+(174, 78, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-18T07:58:18'),
+(175, 78, 'PRESIDENTIAL_OVERRIDE', 1, 'PRESIDENT', 'OVERRIDDEN', 'Presidential Superior Override invoked for emergency healthcare assistance.', 100, '2026-10-18T07:58:18'),
+(176, 79, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-18T07:58:18'),
+(177, 79, 'CREDIT_COMMITTEE', 1, 'PRESIDENT', 'DECLINED', 'Requested amount exceeds 2x unencumbered savings cap.', 0, '2026-10-18T07:58:18'),
+(178, 79, 'APPEAL_RESOLUTION', 1, 'PRESIDENT', 'APPROVED', 'Appeal approved & reinstated: Supplementary proof verified. Approved under presidential arbitration.', 0, '2026-10-18T07:58:18'),
+(179, 80, 'GUARANTOR_CONSENT', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting peer guarantor digital consent.', 0, '2026-10-18T07:59:33'),
+(180, 80, 'PRESIDENTIAL_OVERRIDE', 1, 'PRESIDENT', 'OVERRIDDEN', 'Approved with verified peer co-signers per Article 14 Bye-Laws.', 100, '2026-10-18T07:59:33'),
+(181, 82, 'GUARANTOR_CONSENT', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting peer guarantor digital consent.', 0, '2026-10-18T07:59:46'),
+(182, 83, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-18T08:00:44'),
+(183, 83, 'CREDIT_COMMITTEE', 1, 'PRESIDENT', 'APPROVED', 'Credit score and savings collateral verified satisfactory.', 33, '2026-10-18T08:00:44'),
+(184, 83, 'FINANCIAL_SECRETARY', 1, 'PRESIDENT', 'APPROVED', 'Monthly remittance capacity and 2x savings limit confirmed.', 66, '2026-10-18T08:00:44'),
+(185, 83, 'TREASURER', 1, 'PRESIDENT', 'APPROVED', 'Disbursement approved and loan ledger created.', 100, '2026-10-18T08:00:44'),
+(186, 84, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-18T08:00:44'),
+(187, 84, 'PRESIDENTIAL_OVERRIDE', 1, 'PRESIDENT', 'OVERRIDDEN', 'Presidential Superior Override invoked for emergency healthcare assistance.', 100, '2026-10-18T08:00:44'),
+(188, 85, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-18T08:00:44'),
+(189, 85, 'CREDIT_COMMITTEE', 1, 'PRESIDENT', 'DECLINED', 'Requested amount exceeds 2x unencumbered savings cap.', 0, '2026-10-18T08:00:45'),
+(190, 85, 'APPEAL_RESOLUTION', 1, 'PRESIDENT', 'APPROVED', 'Appeal approved & reinstated: Supplementary proof verified. Approved under presidential arbitration.', 0, '2026-10-18T08:00:45'),
+(191, 86, 'GUARANTOR_CONSENT', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting peer guarantor digital consent.', 0, '2026-10-18T08:00:49'),
+(192, 86, 'PRESIDENTIAL_OVERRIDE', 1, 'PRESIDENT', 'OVERRIDDEN', 'Approved with verified peer co-signers per Article 14 Bye-Laws.', 100, '2026-10-18T08:00:49'),
+(193, 88, 'GUARANTOR_CONSENT', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting peer guarantor digital consent.', 0, '2026-10-18T08:00:55'),
+(194, 89, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-18T08:02:25'),
+(195, 89, 'CREDIT_COMMITTEE', 1, 'PRESIDENT', 'APPROVED', 'Credit score and savings collateral verified satisfactory.', 33, '2026-10-18T08:02:25'),
+(196, 89, 'FINANCIAL_SECRETARY', 1, 'PRESIDENT', 'APPROVED', 'Monthly remittance capacity and 2x savings limit confirmed.', 66, '2026-10-18T08:02:25'),
+(197, 89, 'TREASURER', 1, 'PRESIDENT', 'APPROVED', 'Disbursement approved and loan ledger created.', 100, '2026-10-18T08:02:25'),
+(198, 90, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-18T08:02:25'),
+(199, 90, 'PRESIDENTIAL_OVERRIDE', 1, 'PRESIDENT', 'OVERRIDDEN', 'Presidential Superior Override invoked for emergency healthcare assistance.', 100, '2026-10-18T08:02:26'),
+(200, 91, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-18T08:02:26')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.loan_approval_steps (id, loan_id, step_name, officer_id, officer_role, action, comments, percentage_granted, created_at) VALUES
+(201, 91, 'CREDIT_COMMITTEE', 1, 'PRESIDENT', 'DECLINED', 'Requested amount exceeds 2x unencumbered savings cap.', 0, '2026-10-18T08:02:26'),
+(202, 91, 'APPEAL_RESOLUTION', 1, 'PRESIDENT', 'APPROVED', 'Appeal approved & reinstated: Supplementary proof verified. Approved under presidential arbitration.', 0, '2026-10-18T08:02:26'),
+(203, 92, 'GUARANTOR_CONSENT', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting peer guarantor digital consent.', 0, '2026-10-18T08:02:35'),
+(204, 92, 'PRESIDENTIAL_OVERRIDE', 1, 'PRESIDENT', 'OVERRIDDEN', 'Approved with verified peer co-signers per Article 14 Bye-Laws.', 100, '2026-10-18T08:02:35'),
+(205, 94, 'GUARANTOR_CONSENT', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting peer guarantor digital consent.', 0, '2026-10-18T08:02:44'),
+(206, 53, 'PRESIDENTIAL_OVERRIDE', 1, 'PRESIDENT', 'OVERRIDDEN', 'Presidential Superior Override', 100, '2026-10-18T08:15:29'),
+(207, 52, 'PRESIDENTIAL_OVERRIDE', 1, 'PRESIDENT', 'OVERRIDDEN', 'Presidential Superior Override', 100, '2026-10-18T08:15:35'),
+(208, 95, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-18T08:26:15'),
+(209, 95, 'CREDIT_COMMITTEE', 1, 'PRESIDENT', 'APPROVED', 'Credit score and savings collateral verified satisfactory.', 33, '2026-10-18T08:26:15'),
+(210, 95, 'FINANCIAL_SECRETARY', 1, 'PRESIDENT', 'APPROVED', 'Monthly remittance capacity and 2x savings limit confirmed.', 66, '2026-10-18T08:26:15'),
+(211, 95, 'TREASURER', 1, 'PRESIDENT', 'APPROVED', 'Disbursement approved and loan ledger created.', 100, '2026-10-18T08:26:15'),
+(212, 96, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-18T08:26:15'),
+(213, 96, 'PRESIDENTIAL_OVERRIDE', 1, 'PRESIDENT', 'OVERRIDDEN', 'Presidential Superior Override invoked for emergency healthcare assistance.', 100, '2026-10-18T08:26:16'),
+(214, 97, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-18T08:26:16'),
+(215, 97, 'CREDIT_COMMITTEE', 1, 'PRESIDENT', 'DECLINED', 'Requested amount exceeds 2x unencumbered savings cap.', 0, '2026-10-18T08:26:16'),
+(216, 97, 'APPEAL_RESOLUTION', 1, 'PRESIDENT', 'APPROVED', 'Appeal approved & reinstated: Supplementary proof verified. Approved under presidential arbitration.', 0, '2026-10-18T08:26:16'),
+(217, 98, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-18T08:57:00'),
+(218, 98, 'CREDIT_COMMITTEE', 1, 'PRESIDENT', 'APPROVED', 'Credit score and savings collateral verified satisfactory.', 33, '2026-10-18T08:57:00'),
+(219, 98, 'FINANCIAL_SECRETARY', 1, 'PRESIDENT', 'APPROVED', 'Monthly remittance capacity and 2x savings limit confirmed.', 66, '2026-10-18T08:57:00'),
+(220, 98, 'TREASURER', 1, 'PRESIDENT', 'APPROVED', 'Disbursement approved and loan ledger created.', 100, '2026-10-18T08:57:00'),
+(221, 99, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-18T08:57:01'),
+(222, 99, 'PRESIDENTIAL_OVERRIDE', 1, 'PRESIDENT', 'OVERRIDDEN', 'Presidential Superior Override invoked for emergency healthcare assistance.', 100, '2026-10-18T08:57:01'),
+(223, 100, 'CREDIT_COMMITTEE', 2, 'MEMBER', 'APPROVED', 'Application lodged by cooperator. Awaiting Stage 1 Credit Committee vetting.', 0, '2026-10-18T08:57:01'),
+(224, 100, 'CREDIT_COMMITTEE', 1, 'PRESIDENT', 'DECLINED', 'Requested amount exceeds 2x unencumbered savings cap.', 0, '2026-10-18T08:57:01'),
+(225, 100, 'APPEAL_RESOLUTION', 1, 'PRESIDENT', 'APPROVED', 'Appeal approved & reinstated: Supplementary proof verified. Approved under presidential arbitration.', 0, '2026-10-18T08:57:01')
+ON CONFLICT DO NOTHING;
+
+SELECT setval(pg_get_serial_sequence('public.loan_approval_steps', 'id'), COALESCE((SELECT MAX(id) FROM public.loan_approval_steps), 1), true);
+
+-- ---------------------------------------------------------------------
+-- Table: loan_guarantors (58 records)
+-- ---------------------------------------------------------------------
+INSERT INTO public.loan_guarantors (id, loan_id, guarantor_member_id, guaranteed_amount, lien_encumbered_amount, status, accepted_at, released_at) VALUES
+(1, 28, 15, 25000.00, 0.00, 'PENDING_CONSENT', NULL, NULL),
+(2, 28, 14, 25000.00, 0.00, 'PENDING_CONSENT', NULL, NULL),
+(3, 36, 15, 25000.00, 0.00, 'PENDING_CONSENT', NULL, NULL),
+(4, 36, 14, 25000.00, 0.00, 'PENDING_CONSENT', NULL, NULL),
+(5, 41, 15, 25000.00, 0.00, 'PENDING_CONSENT', NULL, NULL),
+(6, 41, 14, 25000.00, 0.00, 'PENDING_CONSENT', NULL, NULL),
+(7, 46, 2, 20000.00, 0.00, 'PENDING_CONSENT', NULL, NULL),
+(8, 46, 6, 30000.00, 0.00, 'PENDING_CONSENT', NULL, NULL),
+(9, 47, 15, 25000.00, 0.00, 'PENDING_CONSENT', NULL, NULL),
+(10, 47, 14, 25000.00, 0.00, 'PENDING_CONSENT', NULL, NULL),
+(11, 49, 1, 50000.00, 0.00, 'PENDING_CONSENT', NULL, NULL),
+(12, 53, 1, 50000.00, 0.00, 'PENDING_CONSENT', NULL, NULL),
+(13, 54, 15, 25000.00, 0.00, 'PENDING_CONSENT', NULL, NULL),
+(14, 54, 14, 25000.00, 0.00, 'PENDING_CONSENT', NULL, NULL),
+(15, 56, 1, 50000.00, 50000.00, 'RELEASED', '2026-10-18T06:27:29', NULL),
+(16, 57, 1, 50000.00, 50000.00, 'RELEASED', '2026-10-18T06:29:35', NULL),
+(17, 58, 15, 25000.00, 0.00, 'PENDING_CONSENT', NULL, NULL),
+(18, 58, 14, 25000.00, 0.00, 'PENDING_CONSENT', NULL, NULL),
+(19, 60, 1, 50000.00, 50000.00, 'RELEASED', '2026-10-18T06:30:15', NULL),
+(20, 61, 1, 50000.00, 50000.00, 'RELEASED', '2026-10-18T06:30:50', NULL),
+(21, 62, 1, 50000.00, 50000.00, 'RELEASED', '2026-10-18T06:32:30', NULL),
+(22, 63, 15, 25000.00, 0.00, 'PENDING_CONSENT', NULL, NULL),
+(23, 63, 14, 25000.00, 0.00, 'PENDING_CONSENT', NULL, NULL),
+(24, 65, 1, 50000.00, 50000.00, 'RELEASED', '2026-10-18T06:58:27', NULL),
+(25, 66, 15, 25000.00, 0.00, 'PENDING_CONSENT', NULL, NULL),
+(26, 66, 14, 25000.00, 0.00, 'PENDING_CONSENT', NULL, NULL),
+(27, 74, 15, 25000.00, 0.00, 'PENDING_CONSENT', NULL, NULL),
+(28, 74, 14, 25000.00, 0.00, 'PENDING_CONSENT', NULL, NULL),
+(29, 76, 1, 50000.00, 50000.00, 'RELEASED', '2026-10-18T07:20:53', NULL),
+(30, 76, 1, 40000.00, 40000.00, 'ACCEPTED', NULL, NULL),
+(31, 76, 1, 40000.00, 40000.00, 'ACCEPTED', NULL, NULL),
+(32, 76, 1, 40000.00, 40000.00, 'ACCEPTED', NULL, NULL),
+(33, 76, 1, 40000.00, 40000.00, 'ACCEPTED', NULL, NULL),
+(34, 76, 1, 40000.00, 40000.00, 'ACCEPTED', NULL, NULL),
+(35, 76, 1, 40000.00, 40000.00, 'ACCEPTED', NULL, NULL),
+(36, 76, 1, 40000.00, 40000.00, 'ACCEPTED', NULL, NULL),
+(37, 76, 1, 40000.00, 40000.00, 'ACCEPTED', NULL, NULL),
+(38, 80, 15, 25000.00, 0.00, 'PENDING_CONSENT', NULL, NULL),
+(39, 80, 14, 25000.00, 0.00, 'PENDING_CONSENT', NULL, NULL),
+(40, 82, 1, 50000.00, 50000.00, 'RELEASED', '2026-10-18T07:59:46', NULL),
+(41, 82, 1, 40000.00, 40000.00, 'ACCEPTED', NULL, NULL),
+(42, 82, 1, 40000.00, 40000.00, 'ACCEPTED', NULL, NULL),
+(43, 82, 1, 40000.00, 40000.00, 'ACCEPTED', NULL, NULL),
+(44, 82, 1, 40000.00, 40000.00, 'ACCEPTED', NULL, NULL),
+(45, 86, 15, 25000.00, 0.00, 'PENDING_CONSENT', NULL, NULL),
+(46, 86, 14, 25000.00, 0.00, 'PENDING_CONSENT', NULL, NULL),
+(47, 88, 1, 50000.00, 50000.00, 'RELEASED', '2026-10-18T08:00:55', NULL),
+(48, 88, 1, 40000.00, 40000.00, 'ACCEPTED', NULL, NULL),
+(49, 88, 1, 40000.00, 40000.00, 'ACCEPTED', NULL, NULL),
+(50, 88, 1, 40000.00, 40000.00, 'ACCEPTED', NULL, NULL)
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.loan_guarantors (id, loan_id, guarantor_member_id, guaranteed_amount, lien_encumbered_amount, status, accepted_at, released_at) VALUES
+(51, 88, 1, 40000.00, 40000.00, 'ACCEPTED', NULL, NULL),
+(52, 92, 15, 25000.00, 0.00, 'PENDING_CONSENT', NULL, NULL),
+(53, 92, 14, 25000.00, 0.00, 'PENDING_CONSENT', NULL, NULL),
+(54, 94, 1, 50000.00, 50000.00, 'RELEASED', '2026-10-18T08:02:44', NULL),
+(55, 97, 1, 40000.00, 40000.00, 'ACCEPTED', NULL, NULL),
+(56, 97, 1, 40000.00, 40000.00, 'ACCEPTED', NULL, NULL),
+(57, 100, 1, 40000.00, 40000.00, 'ACCEPTED', NULL, NULL),
+(58, 100, 1, 40000.00, 40000.00, 'ACCEPTED', NULL, NULL)
+ON CONFLICT DO NOTHING;
+
+SELECT setval(pg_get_serial_sequence('public.loan_guarantors', 'id'), COALESCE((SELECT MAX(id) FROM public.loan_guarantors), 1), true);
+
+-- ---------------------------------------------------------------------
+-- Table: loan_repayments (5 records)
+-- ---------------------------------------------------------------------
+INSERT INTO public.loan_repayments (id, loan_id, installment_number, due_date, amount_due, amount_paid, paid_date, transaction_ref, status) VALUES
+(264, 88, 1, '2026-07-15', 15000.00, 0.00, NULL, NULL, 'OVERDUE'),
+(265, 88, 999, '2026-10-18', 50000.00, 50000.00, '2026-10-18T08:02:18', 'FCL-L-WMC-2026-3EB551D4', 'PAID'),
+(282, 88, 999, '2026-10-18', 30000.00, 30000.00, '2026-10-18T08:15:01', 'FCL-L-WMC-2026-3EB551D4', 'PAID'),
+(314, 100, 1, '2026-07-15', 15000.00, 0.00, NULL, NULL, 'OVERDUE'),
+(315, 100, 999, '2026-10-18', 50000.00, 50000.00, '2026-10-18T08:57:12', 'FCL-L-WMC-2026-A30ED407', 'PAID')
+ON CONFLICT DO NOTHING;
+
+SELECT setval(pg_get_serial_sequence('public.loan_repayments', 'id'), COALESCE((SELECT MAX(id) FROM public.loan_repayments), 1), true);
+
+-- ---------------------------------------------------------------------
+-- Table: loan_appeals (19 records)
+-- ---------------------------------------------------------------------
+INSERT INTO public.loan_appeals (id, loan_id, member_id, appeal_comments, attached_document_path, document_name, document_mime_type, target_officer_id, status, review_response, created_at, resolved_at) VALUES
+(1, 7, 2, 'Attached evidence of supplementary collateral and off-cycle deposit receipt for committee reconsideration.', '/uploads/documents/appeal_supplementary_proof.pdf', NULL, NULL, 1, 'RESOLVED_APPROVED', 'Supplementary proof verified. Approved under presidential arbitration.', '2026-10-17T12:15:55', '2026-10-17T12:15:55'),
+(2, 12, 2, 'Attached evidence of supplementary collateral and off-cycle deposit receipt for committee reconsideration.', '/uploads/documents/appeal_supplementary_proof.pdf', NULL, NULL, 1, 'RESOLVED_APPROVED', 'Supplementary proof verified. Approved under presidential arbitration.', '2026-10-17T12:18:39', '2026-10-17T12:18:39'),
+(3, 15, 2, 'Attached evidence of supplementary collateral and off-cycle deposit receipt for committee reconsideration.', '/uploads/documents/appeal_supplementary_proof.pdf', NULL, NULL, 1, 'RESOLVED_APPROVED', 'Supplementary proof verified. Approved under presidential arbitration.', '2026-10-17T12:19:36', '2026-10-17T12:19:37'),
+(4, 18, 2, 'Attached evidence of supplementary collateral and off-cycle deposit receipt for committee reconsideration.', '/uploads/documents/appeal_supplementary_proof.pdf', NULL, NULL, 1, 'RESOLVED_APPROVED', 'Supplementary proof verified. Approved under presidential arbitration.', '2026-10-17T12:20:55', '2026-10-17T12:20:55'),
+(5, 21, 2, 'Attached evidence of supplementary collateral and off-cycle deposit receipt for committee reconsideration.', '/uploads/documents/appeal_supplementary_proof.pdf', NULL, NULL, 1, 'RESOLVED_APPROVED', 'Supplementary proof verified. Approved under presidential arbitration.', '2026-10-17T12:21:32', '2026-10-17T12:21:32'),
+(6, 24, 2, 'Attached evidence of supplementary collateral and off-cycle deposit receipt for committee reconsideration.', '/uploads/documents/appeal_supplementary_proof.pdf', NULL, NULL, 1, 'RESOLVED_APPROVED', 'Supplementary proof verified. Approved under presidential arbitration.', '2026-10-17T12:22:35', '2026-10-17T12:22:35'),
+(7, 27, 2, 'Attached evidence of supplementary collateral and off-cycle deposit receipt for committee reconsideration.', '/uploads/documents/appeal_supplementary_proof.pdf', NULL, NULL, 1, 'RESOLVED_APPROVED', 'Supplementary proof verified. Approved under presidential arbitration.', '2026-10-17T12:50:34', '2026-10-17T12:50:35'),
+(8, 32, 2, 'Attached evidence of supplementary collateral and off-cycle deposit receipt for committee reconsideration.', '/uploads/documents/appeal_supplementary_proof.pdf', NULL, NULL, 1, 'RESOLVED_APPROVED', 'Supplementary proof verified. Approved under presidential arbitration.', '2026-10-17T17:36:44', '2026-10-17T17:36:44'),
+(9, 35, 2, 'Attached evidence of supplementary collateral and off-cycle deposit receipt for committee reconsideration.', '/uploads/documents/appeal_supplementary_proof.pdf', NULL, NULL, 1, 'RESOLVED_APPROVED', 'Supplementary proof verified. Approved under presidential arbitration.', '2026-10-17T17:45:35', '2026-10-17T17:45:35'),
+(10, 40, 2, 'Attached evidence of supplementary collateral and off-cycle deposit receipt for committee reconsideration.', '/uploads/documents/appeal_supplementary_proof.pdf', NULL, NULL, 1, 'RESOLVED_APPROVED', 'Supplementary proof verified. Approved under presidential arbitration.', '2026-10-17T18:19:22', '2026-10-17T18:19:22'),
+(11, 45, 2, 'Attached evidence of supplementary collateral and off-cycle deposit receipt for committee reconsideration.', '/uploads/documents/appeal_supplementary_proof.pdf', NULL, NULL, 1, 'RESOLVED_APPROVED', 'Supplementary proof verified. Approved under presidential arbitration.', '2026-10-17T18:48:52', '2026-10-17T18:48:52'),
+(12, 52, 2, 'Attached evidence of supplementary collateral and off-cycle deposit receipt for committee reconsideration.', '/uploads/documents/appeal_supplementary_proof.pdf', NULL, NULL, 1, 'RESOLVED_APPROVED', 'Supplementary proof verified. Approved under presidential arbitration.', '2026-10-18T06:24:16', '2026-10-18T06:24:16'),
+(13, 70, 2, 'Attached evidence of supplementary collateral and off-cycle deposit receipt for committee reconsideration.', '/uploads/documents/appeal_supplementary_proof.pdf', NULL, NULL, 1, 'RESOLVED_APPROVED', 'Supplementary proof verified. Approved under presidential arbitration.', '2026-10-18T07:15:25', '2026-10-18T07:15:25'),
+(14, 73, 2, 'Attached evidence of supplementary collateral and off-cycle deposit receipt for committee reconsideration.', '/uploads/documents/appeal_supplementary_proof.pdf', NULL, NULL, 1, 'RESOLVED_APPROVED', 'Supplementary proof verified. Approved under presidential arbitration.', '2026-10-18T07:20:14', '2026-10-18T07:20:14'),
+(15, 79, 2, 'Attached evidence of supplementary collateral and off-cycle deposit receipt for committee reconsideration.', '/uploads/documents/appeal_supplementary_proof.pdf', NULL, NULL, 1, 'RESOLVED_APPROVED', 'Supplementary proof verified. Approved under presidential arbitration.', '2026-10-18T07:58:18', '2026-10-18T07:58:18'),
+(16, 85, 2, 'Attached evidence of supplementary collateral and off-cycle deposit receipt for committee reconsideration.', '/uploads/documents/appeal_supplementary_proof.pdf', NULL, NULL, 1, 'RESOLVED_APPROVED', 'Supplementary proof verified. Approved under presidential arbitration.', '2026-10-18T08:00:45', '2026-10-18T08:00:45'),
+(17, 91, 2, 'Attached evidence of supplementary collateral and off-cycle deposit receipt for committee reconsideration.', '/uploads/documents/appeal_supplementary_proof.pdf', NULL, NULL, 1, 'RESOLVED_APPROVED', 'Supplementary proof verified. Approved under presidential arbitration.', '2026-10-18T08:02:26', '2026-10-18T08:02:26'),
+(18, 97, 2, 'Attached evidence of supplementary collateral and off-cycle deposit receipt for committee reconsideration.', '/uploads/documents/appeal_supplementary_proof.pdf', NULL, NULL, 1, 'RESOLVED_APPROVED', 'Supplementary proof verified. Approved under presidential arbitration.', '2026-10-18T08:26:16', '2026-10-18T08:26:16'),
+(19, 100, 2, 'Attached evidence of supplementary collateral and off-cycle deposit receipt for committee reconsideration.', '/uploads/documents/appeal_supplementary_proof.pdf', NULL, NULL, 1, 'RESOLVED_APPROVED', 'Supplementary proof verified. Approved under presidential arbitration.', '2026-10-18T08:57:01', '2026-10-18T08:57:01')
+ON CONFLICT DO NOTHING;
+
+SELECT setval(pg_get_serial_sequence('public.loan_appeals', 'id'), COALESCE((SELECT MAX(id) FROM public.loan_appeals), 1), true);
+
+-- ---------------------------------------------------------------------
+-- Table: general_meetings (1 records)
+-- ---------------------------------------------------------------------
+INSERT INTO public.general_meetings (id, meeting_type, meeting_title, meeting_date, minute_reference_doc, created_at) VALUES
+(1, 'SPECIAL_GENERAL_MEETING', 'Inaugural Founding Meeting of Wealthbridge / The Official Corporators', '2026-09-26', 'TOC-MINUTES-04', '2026-10-13T21:35:58')
+ON CONFLICT DO NOTHING;
+
+SELECT setval(pg_get_serial_sequence('public.general_meetings', 'id'), COALESCE((SELECT MAX(id) FROM public.general_meetings), 1), true);
+
+-- ---------------------------------------------------------------------
+-- Table: meeting_attendance (8 records)
+-- ---------------------------------------------------------------------
+INSERT INTO public.meeting_attendance (id, meeting_id, member_id, attendance_status, arrival_time) VALUES
+(1, 1, 1, 'PRESENT', '12:30:00'),
+(2, 1, 2, 'PRESENT', '12:30:00'),
+(3, 1, 3, 'PRESENT', '12:30:00'),
+(4, 1, 4, 'PRESENT', '12:30:00'),
+(5, 1, 5, 'PRESENT', '12:30:00'),
+(6, 1, 6, 'PRESENT', '12:30:00'),
+(7, 1, 7, 'PRESENT', '12:30:00'),
+(8, 1, 8, 'PRESENT', '12:30:00')
+ON CONFLICT DO NOTHING;
+
+SELECT setval(pg_get_serial_sequence('public.meeting_attendance', 'id'), COALESCE((SELECT MAX(id) FROM public.meeting_attendance), 1), true);
+
+-- ---------------------------------------------------------------------
+-- Table: member_exits (1 records)
+-- ---------------------------------------------------------------------
+INSERT INTO public.member_exits (id, member_id, exit_type, notice_date, statutory_notice_expiry_date, reason, supporting_doc_url, nok_claimant_name, nok_claimant_phone, nok_relationship, status, total_savings_at_exit, total_target_savings_at_exit, total_shares_at_exit, outstanding_loans_at_exit, outstanding_fines_at_exit, active_guarantor_commitments_count, exit_processing_fee, bereavement_welfare_grant, net_refund_amount, cleared_by_officer_id, approved_by_president_id, rejection_reason, refund_payment_ref, refund_disbursed_at, created_at, updated_at) VALUES
+(20, 2, 'VOLUNTARY_WITHDRAWAL', '2026-10-18', '2026-11-17', 'Relocation to another municipality for family reasons.', NULL, NULL, NULL, NULL, 'PENDING_CLEARANCE', 829870.02, 250000.00, 6000.00, 4478125.00, 0.00, 0, 5000.00, 0.00, -3397254.98, NULL, NULL, NULL, NULL, NULL, '2026-10-18T08:57:11', '2026-10-18T08:57:11')
+ON CONFLICT DO NOTHING;
+
+SELECT setval(pg_get_serial_sequence('public.member_exits', 'id'), COALESCE((SELECT MAX(id) FROM public.member_exits), 1), true);
+
+-- ---------------------------------------------------------------------
+-- Table: dividend_periods (8 records)
+-- ---------------------------------------------------------------------
+INSERT INTO public.dividend_periods (id, period_name, financial_year_start, financial_year_end, net_surplus_amount, statutory_reserve_percent, statutory_reserve_amount, distributable_pool_amount, weight_share_capital_percent, weight_savings_volume_percent, weight_patronage_percent, min_share_units_required, min_active_months_required, disqualify_active_arrears, total_qualified_members, total_disqualified_members, status, simulated_by_user_id, approved_by_president_id, approved_at, created_at) VALUES
+(1, 'FY2026 Official Dividend Run', '2025-10-01', '2026-09-30', 500000.00, 50.00, 250000.00, 250000.00, 50.00, 50.00, 0.00, 5, 0, TRUE, 8, 3, 'APPROVED_POSTED', 1, 1, '2026-10-18T06:58:15', '2026-10-18T06:58:15'),
+(2, 'FY2026 Official Dividend Run', '2025-10-01', '2026-09-30', 500000.00, 50.00, 250000.00, 250000.00, 50.00, 50.00, 0.00, 5, 0, TRUE, 8, 3, 'APPROVED_POSTED', 1, 1, '2026-10-18T07:14:42', '2026-10-18T07:14:42'),
+(3, 'FY2026 Official Dividend Run', '2025-10-01', '2026-09-30', 500000.00, 50.00, 250000.00, 250000.00, 50.00, 50.00, 0.00, 5, 0, TRUE, 8, 3, 'APPROVED_POSTED', 1, 1, '2026-10-18T07:21:00', '2026-10-18T07:21:00'),
+(4, 'FY2026 Official Dividend Run', '2025-10-01', '2026-09-30', 500000.00, 50.00, 250000.00, 250000.00, 50.00, 50.00, 0.00, 5, 0, TRUE, 8, 4, 'APPROVED_POSTED', 1, 1, '2026-10-18T07:58:03', '2026-10-18T07:58:03'),
+(5, 'FY2026 Official Dividend Run', '2025-10-01', '2026-09-30', 500000.00, 50.00, 250000.00, 250000.00, 50.00, 50.00, 0.00, 5, 0, TRUE, 8, 4, 'APPROVED_POSTED', 1, 1, '2026-10-18T08:00:30', '2026-10-18T08:00:29'),
+(6, 'FY2026 Official Dividend Run', '2025-10-01', '2026-09-30', 500000.00, 50.00, 250000.00, 250000.00, 50.00, 50.00, 0.00, 5, 0, TRUE, 8, 4, 'APPROVED_POSTED', 1, 1, '2026-10-18T08:00:42', '2026-10-18T08:00:42'),
+(7, 'FY2026 Official Dividend Run', '2025-10-01', '2026-09-30', 500000.00, 50.00, 250000.00, 250000.00, 50.00, 50.00, 0.00, 5, 0, TRUE, 8, 4, 'APPROVED_POSTED', 1, 1, '2026-10-18T08:02:11', '2026-10-18T08:02:11'),
+(8, 'FY2026 Official Dividend Run', '2025-10-01', '2026-09-30', 500000.00, 50.00, 250000.00, 250000.00, 50.00, 50.00, 0.00, 5, 0, TRUE, 8, 4, 'APPROVED_POSTED', 1, 1, '2026-10-25T14:45:11', '2026-10-25T14:45:11')
+ON CONFLICT DO NOTHING;
+
+SELECT setval(pg_get_serial_sequence('public.dividend_periods', 'id'), COALESCE((SELECT MAX(id) FROM public.dividend_periods), 1), true);
+
+-- ---------------------------------------------------------------------
+-- Table: dividend_allocations (89 records)
+-- ---------------------------------------------------------------------
+INSERT INTO public.dividend_allocations (id, dividend_period_id, member_id, shares_held, share_equity_amount, savings_balance, loan_patronage_volume, is_qualified, disqualification_reason, dividend_from_shares, dividend_from_savings, dividend_from_patronage, total_dividend_payable, payout_preference, payout_status, payout_reference, settled_at, created_at) VALUES
+(1, 1, 1, 6, 6000.00, 500000.00, 0.00, TRUE, NULL, 17857.14, 69213.73, 0.00, 87070.87, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-1-1-1792303095744', '2026-10-18T06:58:15', '2026-10-18T06:58:15'),
+(2, 1, 2, 6, 6000.00, 403000.00, 0.00, TRUE, NULL, 17857.14, 55786.27, 0.00, 73643.41, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-1-2-1792303095744', '2026-10-18T06:58:15', '2026-10-18T06:58:15'),
+(3, 1, 3, 5, 5000.00, 0.00, 0.00, TRUE, NULL, 14880.95, 0.00, 0.00, 14880.95, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-1-3-1792303095744', '2026-10-18T06:58:15', '2026-10-18T06:58:15'),
+(4, 1, 4, 5, 5000.00, 0.00, 0.00, TRUE, NULL, 14880.95, 0.00, 0.00, 14880.95, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-1-4-1792303095744', '2026-10-18T06:58:15', '2026-10-18T06:58:15'),
+(5, 1, 5, 5, 5000.00, 0.00, 0.00, TRUE, NULL, 14880.95, 0.00, 0.00, 14880.95, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-1-5-1792303095744', '2026-10-18T06:58:15', '2026-10-18T06:58:15'),
+(6, 1, 6, 5, 5000.00, 0.00, 0.00, TRUE, NULL, 14880.95, 0.00, 0.00, 14880.95, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-1-6-1792303095744', '2026-10-18T06:58:15', '2026-10-18T06:58:15'),
+(7, 1, 7, 5, 5000.00, 0.00, 0.00, TRUE, NULL, 14880.95, 0.00, 0.00, 14880.95, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-1-7-1792303095744', '2026-10-18T06:58:15', '2026-10-18T06:58:15'),
+(8, 1, 8, 5, 5000.00, 0.00, 0.00, TRUE, NULL, 14880.95, 0.00, 0.00, 14880.95, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-1-8-1792303095744', '2026-10-18T06:58:15', '2026-10-18T06:58:15'),
+(9, 1, 14, 0, 0.00, 0.00, 0.00, FALSE, 'Shareholding (0 units) below required minimum 5 units; Tenure (-0.5 mos) below required 0 months', 0.00, 0.00, 0.00, 0.00, 'SAVINGS_CREDIT', 'PENDING', NULL, NULL, '2026-10-18T06:58:15'),
+(10, 1, 15, 0, 0.00, 0.00, 0.00, FALSE, 'Shareholding (0 units) below required minimum 5 units; Tenure (-0.6 mos) below required 0 months', 0.00, 0.00, 0.00, 0.00, 'SAVINGS_CREDIT', 'PENDING', NULL, NULL, '2026-10-18T06:58:15'),
+(11, 1, 16, 0, 0.00, 0.00, 0.00, FALSE, 'Membership status is SUSPENDED; Shareholding (0 units) below required minimum 5 units; Tenure (-0.6 mos) below required 0 months', 0.00, 0.00, 0.00, 0.00, 'SAVINGS_CREDIT', 'PENDING', NULL, NULL, '2026-10-18T06:58:15'),
+(12, 2, 1, 6, 6000.00, 500000.00, 0.00, TRUE, NULL, 17857.14, 58634.29, 0.00, 76491.43, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-2-1-1792304082273', '2026-10-18T07:14:42', '2026-10-18T07:14:42'),
+(13, 2, 2, 6, 6000.00, 476643.41, 0.00, TRUE, NULL, 17857.14, 55895.30, 0.00, 73752.44, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-2-2-1792304082273', '2026-10-18T07:14:42', '2026-10-18T07:14:42'),
+(14, 2, 3, 5, 5000.00, 14880.95, 0.00, TRUE, NULL, 14880.95, 1745.07, 0.00, 16626.02, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-2-3-1792304082273', '2026-10-18T07:14:42', '2026-10-18T07:14:42'),
+(15, 2, 4, 5, 5000.00, 14880.95, 0.00, TRUE, NULL, 14880.95, 1745.07, 0.00, 16626.02, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-2-4-1792304082273', '2026-10-18T07:14:42', '2026-10-18T07:14:42'),
+(16, 2, 5, 5, 5000.00, 14880.95, 0.00, TRUE, NULL, 14880.95, 1745.07, 0.00, 16626.02, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-2-5-1792304082273', '2026-10-18T07:14:42', '2026-10-18T07:14:42'),
+(17, 2, 6, 5, 5000.00, 14880.95, 0.00, TRUE, NULL, 14880.95, 1745.07, 0.00, 16626.02, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-2-6-1792304082273', '2026-10-18T07:14:42', '2026-10-18T07:14:42'),
+(18, 2, 7, 5, 5000.00, 14880.95, 0.00, TRUE, NULL, 14880.95, 1745.07, 0.00, 16626.02, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-2-7-1792304082273', '2026-10-18T07:14:42', '2026-10-18T07:14:42'),
+(19, 2, 8, 5, 5000.00, 14880.95, 0.00, TRUE, NULL, 14880.95, 1745.07, 0.00, 16626.02, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-2-8-1792304082273', '2026-10-18T07:14:42', '2026-10-18T07:14:42'),
+(20, 2, 14, 0, 0.00, 0.00, 0.00, FALSE, 'Shareholding (0 units) below required minimum 5 units; Tenure (-0.5 mos) below required 0 months', 0.00, 0.00, 0.00, 0.00, 'SAVINGS_CREDIT', 'PENDING', NULL, NULL, '2026-10-18T07:14:42'),
+(21, 2, 15, 0, 0.00, 0.00, 0.00, FALSE, 'Shareholding (0 units) below required minimum 5 units; Tenure (-0.6 mos) below required 0 months', 0.00, 0.00, 0.00, 0.00, 'SAVINGS_CREDIT', 'PENDING', NULL, NULL, '2026-10-18T07:14:42'),
+(22, 2, 16, 0, 0.00, 0.00, 0.00, FALSE, 'Membership status is SUSPENDED; Shareholding (0 units) below required minimum 5 units; Tenure (-0.6 mos) below required 0 months', 0.00, 0.00, 0.00, 0.00, 'SAVINGS_CREDIT', 'PENDING', NULL, NULL, '2026-10-18T07:14:42'),
+(23, 3, 1, 6, 6000.00, 500000.00, 0.00, TRUE, NULL, 17857.14, 48097.73, 0.00, 65954.87, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-3-1-1792304460644', '2026-10-18T07:21:00', '2026-10-18T07:21:00'),
+(24, 3, 2, 6, 6000.00, 610395.85, 0.00, TRUE, NULL, 17857.14, 58717.31, 0.00, 76574.45, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-3-2-1792304460644', '2026-10-18T07:21:00', '2026-10-18T07:21:00'),
+(25, 3, 3, 5, 5000.00, 31506.97, 0.00, TRUE, NULL, 14880.95, 3030.83, 0.00, 17911.78, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-3-3-1792304460644', '2026-10-18T07:21:00', '2026-10-18T07:21:00'),
+(26, 3, 4, 5, 5000.00, 31506.97, 0.00, TRUE, NULL, 14880.95, 3030.83, 0.00, 17911.78, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-3-4-1792304460644', '2026-10-18T07:21:00', '2026-10-18T07:21:00'),
+(27, 3, 5, 5, 5000.00, 31506.97, 0.00, TRUE, NULL, 14880.95, 3030.83, 0.00, 17911.78, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-3-5-1792304460644', '2026-10-18T07:21:00', '2026-10-18T07:21:00'),
+(28, 3, 6, 5, 5000.00, 31506.97, 0.00, TRUE, NULL, 14880.95, 3030.83, 0.00, 17911.78, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-3-6-1792304460644', '2026-10-18T07:21:00', '2026-10-18T07:21:00'),
+(29, 3, 7, 5, 5000.00, 31506.97, 0.00, TRUE, NULL, 14880.95, 3030.83, 0.00, 17911.78, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-3-7-1792304460644', '2026-10-18T07:21:00', '2026-10-18T07:21:00'),
+(30, 3, 8, 5, 5000.00, 31506.97, 0.00, TRUE, NULL, 14880.95, 3030.83, 0.00, 17911.78, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-3-8-1792304460644', '2026-10-18T07:21:00', '2026-10-18T07:21:00'),
+(31, 3, 14, 0, 0.00, 0.00, 0.00, FALSE, 'Shareholding (0 units) below required minimum 5 units; Tenure (-0.5 mos) below required 0 months', 0.00, 0.00, 0.00, 0.00, 'SAVINGS_CREDIT', 'PENDING', NULL, NULL, '2026-10-18T07:21:00'),
+(32, 3, 15, 0, 0.00, 0.00, 0.00, FALSE, 'Shareholding (0 units) below required minimum 5 units; Tenure (-0.6 mos) below required 0 months', 0.00, 0.00, 0.00, 0.00, 'SAVINGS_CREDIT', 'PENDING', NULL, NULL, '2026-10-18T07:21:00'),
+(33, 3, 16, 0, 0.00, 0.00, 0.00, FALSE, 'Membership status is SUSPENDED; Shareholding (0 units) below required minimum 5 units; Tenure (-0.6 mos) below required 0 months', 0.00, 0.00, 0.00, 0.00, 'SAVINGS_CREDIT', 'PENDING', NULL, NULL, '2026-10-18T07:21:00'),
+(34, 4, 1, 6, 6000.00, 485954.87, 0.00, TRUE, NULL, 17857.14, 46038.07, 0.00, 63895.21, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-4-1-1792306683433', '2026-10-18T07:58:03', '2026-10-18T07:58:03'),
+(35, 4, 2, 6, 6000.00, 536970.30, 0.00, TRUE, NULL, 17857.14, 50871.13, 0.00, 68728.27, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-4-2-1792306683433', '2026-10-18T07:58:03', '2026-10-18T07:58:03'),
+(36, 4, 3, 5, 5000.00, 49418.75, 0.00, TRUE, NULL, 14880.95, 4681.80, 0.00, 19562.75, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-4-3-1792306683433', '2026-10-18T07:58:03', '2026-10-18T07:58:03'),
+(37, 4, 4, 5, 5000.00, 49418.75, 0.00, TRUE, NULL, 14880.95, 4681.80, 0.00, 19562.75, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-4-4-1792306683433', '2026-10-18T07:58:03', '2026-10-18T07:58:03'),
+(38, 4, 5, 5, 5000.00, 49418.75, 0.00, TRUE, NULL, 14880.95, 4681.80, 0.00, 19562.75, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-4-5-1792306683433', '2026-10-18T07:58:03', '2026-10-18T07:58:03'),
+(39, 4, 6, 5, 5000.00, 49418.75, 0.00, TRUE, NULL, 14880.95, 4681.80, 0.00, 19562.75, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-4-6-1792306683433', '2026-10-18T07:58:03', '2026-10-18T07:58:03'),
+(40, 4, 7, 5, 5000.00, 49418.75, 0.00, TRUE, NULL, 14880.95, 4681.80, 0.00, 19562.75, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-4-7-1792306683433', '2026-10-18T07:58:03', '2026-10-18T07:58:03'),
+(41, 4, 8, 5, 5000.00, 49418.75, 0.00, TRUE, NULL, 14880.95, 4681.80, 0.00, 19562.75, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-4-8-1792306683433', '2026-10-18T07:58:03', '2026-10-18T07:58:03'),
+(42, 4, 14, 0, 0.00, 0.00, 0.00, FALSE, 'Shareholding (0 units) below required minimum 5 units; Tenure (-0.5 mos) below required 0 months', 0.00, 0.00, 0.00, 0.00, 'SAVINGS_CREDIT', 'PENDING', NULL, NULL, '2026-10-18T07:58:03'),
+(43, 4, 15, 0, 0.00, 0.00, 0.00, FALSE, 'Shareholding (0 units) below required minimum 5 units; Tenure (-0.6 mos) below required 0 months', 0.00, 0.00, 0.00, 0.00, 'SAVINGS_CREDIT', 'PENDING', NULL, NULL, '2026-10-18T07:58:03'),
+(44, 4, 16, 0, 0.00, 0.00, 0.00, FALSE, 'Membership status is SUSPENDED; Shareholding (0 units) below required minimum 5 units; Tenure (-0.6 mos) below required 0 months', 0.00, 0.00, 0.00, 0.00, 'SAVINGS_CREDIT', 'PENDING', NULL, NULL, '2026-10-18T07:58:03'),
+(46, 5, 1, 6, 6000.00, 460000.00, 0.00, TRUE, NULL, 17857.14, 39530.11, 0.00, 57387.25, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-5-1-1792306829992', '2026-10-18T08:00:30', '2026-10-18T08:00:29'),
+(47, 5, 2, 6, 6000.00, 580698.57, 0.00, TRUE, NULL, 17857.14, 49902.34, 0.00, 67759.48, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-5-2-1792306829992', '2026-10-18T08:00:30', '2026-10-18T08:00:29'),
+(48, 5, 3, 5, 5000.00, 68981.50, 0.00, TRUE, NULL, 14880.95, 5927.93, 0.00, 20808.88, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-5-3-1792306829992', '2026-10-18T08:00:30', '2026-10-18T08:00:29'),
+(49, 5, 4, 5, 5000.00, 68981.50, 0.00, TRUE, NULL, 14880.95, 5927.93, 0.00, 20808.88, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-5-4-1792306829992', '2026-10-18T08:00:30', '2026-10-18T08:00:29'),
+(50, 5, 5, 5, 5000.00, 68981.50, 0.00, TRUE, NULL, 14880.95, 5927.93, 0.00, 20808.88, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-5-5-1792306829992', '2026-10-18T08:00:30', '2026-10-18T08:00:29'),
+(51, 5, 6, 5, 5000.00, 68981.50, 0.00, TRUE, NULL, 14880.95, 5927.93, 0.00, 20808.88, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-5-6-1792306829992', '2026-10-18T08:00:30', '2026-10-18T08:00:29')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.dividend_allocations (id, dividend_period_id, member_id, shares_held, share_equity_amount, savings_balance, loan_patronage_volume, is_qualified, disqualification_reason, dividend_from_shares, dividend_from_savings, dividend_from_patronage, total_dividend_payable, payout_preference, payout_status, payout_reference, settled_at, created_at) VALUES
+(52, 5, 7, 5, 5000.00, 68981.50, 0.00, TRUE, NULL, 14880.95, 5927.93, 0.00, 20808.88, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-5-7-1792306829992', '2026-10-18T08:00:30', '2026-10-18T08:00:29'),
+(53, 5, 8, 5, 5000.00, 68981.50, 0.00, TRUE, NULL, 14880.95, 5927.93, 0.00, 20808.88, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-5-8-1792306829992', '2026-10-18T08:00:30', '2026-10-18T08:00:29'),
+(54, 5, 14, 0, 0.00, 0.00, 0.00, FALSE, 'Shareholding (0 units) below required minimum 5 units; Tenure (-0.5 mos) below required 0 months', 0.00, 0.00, 0.00, 0.00, 'SAVINGS_CREDIT', 'PENDING', NULL, NULL, '2026-10-18T08:00:29'),
+(55, 5, 15, 0, 0.00, 0.00, 0.00, FALSE, 'Shareholding (0 units) below required minimum 5 units; Tenure (-0.6 mos) below required 0 months', 0.00, 0.00, 0.00, 0.00, 'SAVINGS_CREDIT', 'PENDING', NULL, NULL, '2026-10-18T08:00:29'),
+(56, 5, 16, 0, 0.00, 0.00, 0.00, FALSE, 'Membership status is SUSPENDED; Shareholding (0 units) below required minimum 5 units; Tenure (-0.6 mos) below required 0 months', 0.00, 0.00, 0.00, 0.00, 'SAVINGS_CREDIT', 'PENDING', NULL, NULL, '2026-10-18T08:00:29'),
+(58, 6, 1, 6, 6000.00, 517387.25, 0.00, TRUE, NULL, 17857.14, 37940.79, 0.00, 55797.93, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-6-1-1792306842630', '2026-10-18T08:00:42', '2026-10-18T08:00:42'),
+(59, 6, 2, 6, 6000.00, 648458.05, 0.00, TRUE, NULL, 17857.14, 47552.42, 0.00, 65409.56, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-6-2-1792306842630', '2026-10-18T08:00:42', '2026-10-18T08:00:42'),
+(60, 6, 3, 5, 5000.00, 89790.38, 0.00, TRUE, NULL, 14880.95, 6584.47, 0.00, 21465.42, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-6-3-1792306842630', '2026-10-18T08:00:42', '2026-10-18T08:00:42'),
+(61, 6, 4, 5, 5000.00, 89790.38, 0.00, TRUE, NULL, 14880.95, 6584.47, 0.00, 21465.42, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-6-4-1792306842630', '2026-10-18T08:00:42', '2026-10-18T08:00:42'),
+(62, 6, 5, 5, 5000.00, 89790.38, 0.00, TRUE, NULL, 14880.95, 6584.47, 0.00, 21465.42, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-6-5-1792306842630', '2026-10-18T08:00:42', '2026-10-18T08:00:42'),
+(63, 6, 6, 5, 5000.00, 89790.38, 0.00, TRUE, NULL, 14880.95, 6584.47, 0.00, 21465.42, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-6-6-1792306842630', '2026-10-18T08:00:42', '2026-10-18T08:00:42'),
+(64, 6, 7, 5, 5000.00, 89790.38, 0.00, TRUE, NULL, 14880.95, 6584.47, 0.00, 21465.42, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-6-7-1792306842630', '2026-10-18T08:00:42', '2026-10-18T08:00:42'),
+(65, 6, 8, 5, 5000.00, 89790.38, 0.00, TRUE, NULL, 14880.95, 6584.47, 0.00, 21465.42, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-6-8-1792306842630', '2026-10-18T08:00:42', '2026-10-18T08:00:42'),
+(66, 6, 14, 0, 0.00, 0.00, 0.00, FALSE, 'Shareholding (0 units) below required minimum 5 units; Tenure (-0.5 mos) below required 0 months', 0.00, 0.00, 0.00, 0.00, 'SAVINGS_CREDIT', 'PENDING', NULL, NULL, '2026-10-18T08:00:42'),
+(67, 6, 15, 0, 0.00, 0.00, 0.00, FALSE, 'Shareholding (0 units) below required minimum 5 units; Tenure (-0.6 mos) below required 0 months', 0.00, 0.00, 0.00, 0.00, 'SAVINGS_CREDIT', 'PENDING', NULL, NULL, '2026-10-18T08:00:42'),
+(68, 6, 16, 0, 0.00, 0.00, 0.00, FALSE, 'Membership status is SUSPENDED; Shareholding (0 units) below required minimum 5 units; Tenure (-0.6 mos) below required 0 months', 0.00, 0.00, 0.00, 0.00, 'SAVINGS_CREDIT', 'PENDING', NULL, NULL, '2026-10-18T08:00:42'),
+(70, 7, 1, 6, 6000.00, 480000.00, 0.00, TRUE, NULL, 17857.14, 32147.41, 0.00, 50004.55, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-7-1-1792306931222', '2026-10-18T08:02:11', '2026-10-18T08:02:11'),
+(71, 7, 2, 6, 6000.00, 718867.61, 0.00, TRUE, NULL, 17857.14, 48145.27, 0.00, 66002.41, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-7-2-1792306931222', '2026-10-18T08:02:11', '2026-10-18T08:02:11'),
+(72, 7, 3, 5, 5000.00, 111255.80, 0.00, TRUE, NULL, 14880.95, 7451.22, 0.00, 22332.17, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-7-3-1792306931222', '2026-10-18T08:02:11', '2026-10-18T08:02:11'),
+(73, 7, 4, 5, 5000.00, 111255.80, 0.00, TRUE, NULL, 14880.95, 7451.22, 0.00, 22332.17, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-7-4-1792306931222', '2026-10-18T08:02:11', '2026-10-18T08:02:11'),
+(74, 7, 5, 5, 5000.00, 111255.80, 0.00, TRUE, NULL, 14880.95, 7451.22, 0.00, 22332.17, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-7-5-1792306931222', '2026-10-18T08:02:11', '2026-10-18T08:02:11'),
+(75, 7, 6, 5, 5000.00, 111255.80, 0.00, TRUE, NULL, 14880.95, 7451.22, 0.00, 22332.17, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-7-6-1792306931222', '2026-10-18T08:02:11', '2026-10-18T08:02:11'),
+(76, 7, 7, 5, 5000.00, 111255.80, 0.00, TRUE, NULL, 14880.95, 7451.22, 0.00, 22332.17, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-7-7-1792306931222', '2026-10-18T08:02:11', '2026-10-18T08:02:11'),
+(77, 7, 8, 5, 5000.00, 111255.80, 0.00, TRUE, NULL, 14880.95, 7451.22, 0.00, 22332.17, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-7-8-1792306931222', '2026-10-18T08:02:11', '2026-10-18T08:02:11'),
+(78, 7, 14, 0, 0.00, 0.00, 0.00, FALSE, 'Shareholding (0 units) below required minimum 5 units; Tenure (-0.5 mos) below required 0 months', 0.00, 0.00, 0.00, 0.00, 'SAVINGS_CREDIT', 'PENDING', NULL, NULL, '2026-10-18T08:02:11'),
+(79, 7, 15, 0, 0.00, 0.00, 0.00, FALSE, 'Shareholding (0 units) below required minimum 5 units; Tenure (-0.6 mos) below required 0 months', 0.00, 0.00, 0.00, 0.00, 'SAVINGS_CREDIT', 'PENDING', NULL, NULL, '2026-10-18T08:02:11'),
+(80, 7, 16, 0, 0.00, 0.00, 0.00, FALSE, 'Membership status is SUSPENDED; Shareholding (0 units) below required minimum 5 units; Tenure (-0.6 mos) below required 0 months', 0.00, 0.00, 0.00, 0.00, 'SAVINGS_CREDIT', 'PENDING', NULL, NULL, '2026-10-18T08:02:11'),
+(82, 8, 1, 6, 6000.00, 430000.00, 0.00, TRUE, NULL, 17857.14, 26459.61, 0.00, 44316.75, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-8-1-1792935911193', '2026-10-25T14:45:11', '2026-10-25T14:45:11'),
+(83, 8, 2, 6, 6000.00, 799870.02, 0.00, TRUE, NULL, 17857.14, 49219.19, 0.00, 67076.33, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-8-2-1792935911193', '2026-10-25T14:45:11', '2026-10-25T14:45:11'),
+(84, 8, 3, 5, 5000.00, 133587.97, 0.00, TRUE, NULL, 14880.95, 8220.20, 0.00, 23101.15, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-8-3-1792935911193', '2026-10-25T14:45:11', '2026-10-25T14:45:11'),
+(85, 8, 4, 5, 5000.00, 133587.97, 0.00, TRUE, NULL, 14880.95, 8220.20, 0.00, 23101.15, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-8-4-1792935911193', '2026-10-25T14:45:11', '2026-10-25T14:45:11'),
+(86, 8, 5, 5, 5000.00, 133587.97, 0.00, TRUE, NULL, 14880.95, 8220.20, 0.00, 23101.15, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-8-5-1792935911193', '2026-10-25T14:45:11', '2026-10-25T14:45:11'),
+(87, 8, 6, 5, 5000.00, 133587.97, 0.00, TRUE, NULL, 14880.95, 8220.20, 0.00, 23101.15, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-8-6-1792935911193', '2026-10-25T14:45:11', '2026-10-25T14:45:11'),
+(88, 8, 7, 5, 5000.00, 133587.97, 0.00, TRUE, NULL, 14880.95, 8220.20, 0.00, 23101.15, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-8-7-1792935911193', '2026-10-25T14:45:11', '2026-10-25T14:45:11'),
+(89, 8, 8, 5, 5000.00, 133587.97, 0.00, TRUE, NULL, 14880.95, 8220.20, 0.00, 23101.15, 'SAVINGS_CREDIT', 'CREDITED_TO_SAVINGS', 'DIV-8-8-1792935911193', '2026-10-25T14:45:11', '2026-10-25T14:45:11'),
+(90, 8, 14, 0, 0.00, 0.00, 0.00, FALSE, 'Shareholding (0 units) below required minimum 5 units; Tenure (-0.5 mos) below required 0 months', 0.00, 0.00, 0.00, 0.00, 'SAVINGS_CREDIT', 'PENDING', NULL, NULL, '2026-10-25T14:45:11'),
+(91, 8, 15, 0, 0.00, 0.00, 0.00, FALSE, 'Shareholding (0 units) below required minimum 5 units; Tenure (-0.6 mos) below required 0 months', 0.00, 0.00, 0.00, 0.00, 'SAVINGS_CREDIT', 'PENDING', NULL, NULL, '2026-10-25T14:45:11'),
+(92, 8, 16, 0, 0.00, 0.00, 0.00, FALSE, 'Membership status is SUSPENDED; Shareholding (0 units) below required minimum 5 units; Tenure (-0.6 mos) below required 0 months', 0.00, 0.00, 0.00, 0.00, 'SAVINGS_CREDIT', 'PENDING', NULL, NULL, '2026-10-25T14:45:11'),
+(93, 8, 10021, 0, 0.00, 0.00, 0.00, FALSE, 'Membership status is SUSPENDED; Shareholding (0 units) below required minimum 5 units; Tenure (-0.6 mos) below required 0 months', 0.00, 0.00, 0.00, 0.00, 'SAVINGS_CREDIT', 'PENDING', NULL, NULL, '2026-10-25T14:45:11')
+ON CONFLICT DO NOTHING;
+
+SELECT setval(pg_get_serial_sequence('public.dividend_allocations', 'id'), COALESCE((SELECT MAX(id) FROM public.dividend_allocations), 1), true);
+
+-- ---------------------------------------------------------------------
+-- Table: system_notifications (31 records)
+-- ---------------------------------------------------------------------
+INSERT INTO public.system_notifications (id, recipient_type, recipient_id, category, title, message, severity, reference_type, reference_id, milestone_tier, is_read, created_at) VALUES
+(1, 'ALL_ADMIN', NULL, 'LOAN_DEFAULT', '30-Day Loan Default Notice: L-WMC-2026-553AB4D4', 'First-tier default notice: Loan L-WMC-2026-553AB4D4 for Olaleke Olaoye (WMC-2026-002) has reached 30 days default.', 'WARNING', 'LOAN', '76', 30, FALSE, '2026-10-18T07:55:34'),
+(2, 'ALL_ADMIN', NULL, 'LOAN_DEFAULT', '45-Day Loan Default Notice: L-WMC-2026-553AB4D4', 'Loan L-WMC-2026-553AB4D4 (Olaleke Olaoye) is now 45 days in default. Login prompts active for borrower and guarantors.', 'CRITICAL', 'LOAN', '76', 45, FALSE, '2026-10-18T07:55:34'),
+(3, 'ALL_ADMIN', NULL, 'LOAN_DEFAULT', '90-Day Loan Default Notice: L-WMC-2026-553AB4D4', 'CRITICAL: Loan L-WMC-2026-553AB4D4 (Olaleke Olaoye) has reached 90 days default (Balance: NGN 80,000.00). FinSec & President action required to authorize foreclosure offset.', 'DANGER', 'LOAN', '76', 90, FALSE, '2026-10-18T07:55:34'),
+(4, 'ALL_ADMIN', NULL, 'LOAN_DEFAULT', '30-Day Loan Default Notice: L-WMC-2026-9CDA5F1F', 'First-tier default notice: Loan L-WMC-2026-9CDA5F1F for Olaleke Olaoye (WMC-2026-002) has reached 30 days default.', 'WARNING', 'LOAN', '82', 30, FALSE, '2026-10-18T07:59:56'),
+(5, 'MEMBER', 1, 'LOAN_DEFAULT', '30-Day Guaranteed Loan Default Alert: L-WMC-2026-9CDA5F1F', 'Default Notice: Loan L-WMC-2026-9CDA5F1F for Olaleke Olaoye, guaranteed by you for NGN 40,000.00, has reached 30 days in default. Please contact the borrower.', 'WARNING', 'LOAN', '82', 30, FALSE, '2026-10-18T07:59:56'),
+(6, 'ALL_ADMIN', NULL, 'LOAN_DEFAULT', '45-Day Loan Default Notice: L-WMC-2026-9CDA5F1F', 'Loan L-WMC-2026-9CDA5F1F (Olaleke Olaoye) is now 45 days in default. Login prompts active for borrower and guarantors.', 'CRITICAL', 'LOAN', '82', 45, FALSE, '2026-10-18T07:59:56'),
+(7, 'MEMBER', 1, 'LOAN_DEFAULT', '45-Day Guaranteed Loan Default Alert: L-WMC-2026-9CDA5F1F', 'URGENT: Cooperator Olaleke Olaoye''s loan (L-WMC-2026-9CDA5F1F), guaranteed by you for NGN 40,000.00, is now 45 days in default. A warning prompt is active on your portal.', 'CRITICAL', 'LOAN', '82', 45, FALSE, '2026-10-18T07:59:56'),
+(8, 'ALL_ADMIN', NULL, 'LOAN_DEFAULT', '90-Day Loan Default Notice: L-WMC-2026-9CDA5F1F', 'CRITICAL: Loan L-WMC-2026-9CDA5F1F (Olaleke Olaoye) has reached 90 days default (Balance: NGN 30,000.00). FinSec & President action required to authorize foreclosure offset.', 'DANGER', 'LOAN', '82', 90, FALSE, '2026-10-18T08:00:17'),
+(9, 'MEMBER', 1, 'LOAN_DEFAULT', '90-Day Guaranteed Loan Default Alert: L-WMC-2026-9CDA5F1F', 'CRITICAL NOTICE: Loan L-WMC-2026-9CDA5F1F for Olaleke Olaoye has reached 90 days in default. Executive offset against your encumbered regular savings (NGN 40,000.00) has been submitted for President & FinSec sign-off.', 'DANGER', 'LOAN', '82', 90, FALSE, '2026-10-18T08:00:17'),
+(10, 'MEMBER', 1, 'LOAN_DEFAULT', '90-Day Guaranteed Loan Default Alert: L-WMC-2026-9CDA5F1F', 'CRITICAL NOTICE: Loan L-WMC-2026-9CDA5F1F for Olaleke Olaoye has reached 90 days in default. Executive offset against your encumbered regular savings (NGN 40,000.00) has been submitted for President & FinSec sign-off.', 'DANGER', 'LOAN', '82', 90, FALSE, '2026-10-18T08:00:17'),
+(11, 'ALL_ADMIN', NULL, 'LOAN_DEFAULT', '30-Day Loan Default Notice: L-WMC-2026-3EB551D4', 'First-tier default notice: Loan L-WMC-2026-3EB551D4 for Olaleke Olaoye (WMC-2026-002) has reached 30 days default.', 'WARNING', 'LOAN', '88', 30, FALSE, '2026-10-18T08:00:57'),
+(12, 'MEMBER', 1, 'LOAN_DEFAULT', '30-Day Guaranteed Loan Default Alert: L-WMC-2026-3EB551D4', 'Default Notice: Loan L-WMC-2026-3EB551D4 for Olaleke Olaoye, guaranteed by you for NGN 40,000.00, has reached 30 days in default. Please contact the borrower.', 'WARNING', 'LOAN', '88', 30, FALSE, '2026-10-18T08:00:57'),
+(13, 'ALL_ADMIN', NULL, 'LOAN_DEFAULT', '45-Day Loan Default Notice: L-WMC-2026-3EB551D4', 'Loan L-WMC-2026-3EB551D4 (Olaleke Olaoye) is now 45 days in default. Login prompts active for borrower and guarantors.', 'CRITICAL', 'LOAN', '88', 45, FALSE, '2026-10-18T08:00:57'),
+(14, 'MEMBER', 1, 'LOAN_DEFAULT', '45-Day Guaranteed Loan Default Alert: L-WMC-2026-3EB551D4', 'URGENT: Cooperator Olaleke Olaoye''s loan (L-WMC-2026-3EB551D4), guaranteed by you for NGN 40,000.00, is now 45 days in default. A warning prompt is active on your portal.', 'CRITICAL', 'LOAN', '88', 45, FALSE, '2026-10-18T08:00:57'),
+(15, 'ALL_ADMIN', NULL, 'LOAN_DEFAULT', '90-Day Loan Default Notice: L-WMC-2026-3EB551D4', 'CRITICAL: Loan L-WMC-2026-3EB551D4 (Olaleke Olaoye) has reached 90 days default (Balance: NGN 30,000.00). FinSec & President action required to authorize foreclosure offset.', 'DANGER', 'LOAN', '88', 90, FALSE, '2026-10-18T08:02:17'),
+(16, 'MEMBER', 1, 'LOAN_DEFAULT', '90-Day Guaranteed Loan Default Alert: L-WMC-2026-3EB551D4', 'CRITICAL NOTICE: Loan L-WMC-2026-3EB551D4 for Olaleke Olaoye has reached 90 days in default. Executive offset against your encumbered regular savings (NGN 40,000.00) has been submitted for President & FinSec sign-off.', 'DANGER', 'LOAN', '88', 90, FALSE, '2026-10-18T08:02:17'),
+(17, 'MEMBER', 1, 'LOAN_DEFAULT', '90-Day Guaranteed Loan Default Alert: L-WMC-2026-3EB551D4', 'CRITICAL NOTICE: Loan L-WMC-2026-3EB551D4 for Olaleke Olaoye has reached 90 days in default. Executive offset against your encumbered regular savings (NGN 40,000.00) has been submitted for President & FinSec sign-off.', 'DANGER', 'LOAN', '88', 90, FALSE, '2026-10-18T08:02:17'),
+(18, 'ALL_ADMIN', NULL, 'LOAN_DEFAULT', '30-Day Loan Default Notice: L-WMC-2026-14744738', 'First-tier default notice: Loan L-WMC-2026-14744738 for Olaleke Olaoye (WMC-2026-002) has reached 30 days default.', 'WARNING', 'LOAN', '97', 30, FALSE, '2026-10-18T08:26:47'),
+(19, 'MEMBER', 1, 'LOAN_DEFAULT', '30-Day Guaranteed Loan Default Alert: L-WMC-2026-14744738', 'Default Notice: Loan L-WMC-2026-14744738 for Olaleke Olaoye, guaranteed by you for NGN 40,000.00, has reached 30 days in default. Please contact the borrower.', 'WARNING', 'LOAN', '97', 30, FALSE, '2026-10-18T08:26:47'),
+(20, 'ALL_ADMIN', NULL, 'LOAN_DEFAULT', '45-Day Loan Default Notice: L-WMC-2026-14744738', 'Loan L-WMC-2026-14744738 (Olaleke Olaoye) is now 45 days in default. Login prompts active for borrower and guarantors.', 'CRITICAL', 'LOAN', '97', 45, FALSE, '2026-10-18T08:26:47'),
+(21, 'MEMBER', 1, 'LOAN_DEFAULT', '45-Day Guaranteed Loan Default Alert: L-WMC-2026-14744738', 'URGENT: Cooperator Olaleke Olaoye''s loan (L-WMC-2026-14744738), guaranteed by you for NGN 40,000.00, is now 45 days in default. A warning prompt is active on your portal.', 'CRITICAL', 'LOAN', '97', 45, FALSE, '2026-10-18T08:26:47'),
+(22, 'ALL_ADMIN', NULL, 'LOAN_DEFAULT', '90-Day Loan Default Notice: L-WMC-2026-14744738', 'CRITICAL: Loan L-WMC-2026-14744738 (Olaleke Olaoye) has reached 90 days default (Balance: NGN 30,000.00). FinSec & President action required to authorize foreclosure offset.', 'DANGER', 'LOAN', '97', 90, FALSE, '2026-10-18T08:45:20'),
+(23, 'MEMBER', 1, 'LOAN_DEFAULT', '90-Day Guaranteed Loan Default Alert: L-WMC-2026-14744738', 'CRITICAL NOTICE: Loan L-WMC-2026-14744738 for Olaleke Olaoye has reached 90 days in default. Executive offset against your encumbered regular savings (NGN 40,000.00) has been submitted for President & FinSec sign-off.', 'DANGER', 'LOAN', '97', 90, FALSE, '2026-10-18T08:45:20'),
+(24, 'MEMBER', 1, 'LOAN_DEFAULT', '90-Day Guaranteed Loan Default Alert: L-WMC-2026-14744738', 'CRITICAL NOTICE: Loan L-WMC-2026-14744738 for Olaleke Olaoye has reached 90 days in default. Executive offset against your encumbered regular savings (NGN 40,000.00) has been submitted for President & FinSec sign-off.', 'DANGER', 'LOAN', '97', 90, FALSE, '2026-10-18T08:45:20'),
+(25, 'ALL_ADMIN', NULL, 'LOAN_DEFAULT', '30-Day Loan Default Notice: L-WMC-2026-A30ED407', 'First-tier default notice: Loan L-WMC-2026-A30ED407 for Olaleke Olaoye (WMC-2026-002) has reached 30 days default.', 'WARNING', 'LOAN', '100', 30, FALSE, '2026-10-18T08:57:11'),
+(26, 'MEMBER', 1, 'LOAN_DEFAULT', '30-Day Guaranteed Loan Default Alert: L-WMC-2026-A30ED407', 'Default Notice: Loan L-WMC-2026-A30ED407 for Olaleke Olaoye, guaranteed by you for NGN 40,000.00, has reached 30 days in default. Please contact the borrower.', 'WARNING', 'LOAN', '100', 30, FALSE, '2026-10-18T08:57:11'),
+(27, 'ALL_ADMIN', NULL, 'LOAN_DEFAULT', '45-Day Loan Default Notice: L-WMC-2026-A30ED407', 'Loan L-WMC-2026-A30ED407 (Olaleke Olaoye) is now 45 days in default. Login prompts active for borrower and guarantors.', 'CRITICAL', 'LOAN', '100', 45, FALSE, '2026-10-18T08:57:11'),
+(28, 'MEMBER', 1, 'LOAN_DEFAULT', '45-Day Guaranteed Loan Default Alert: L-WMC-2026-A30ED407', 'URGENT: Cooperator Olaleke Olaoye''s loan (L-WMC-2026-A30ED407), guaranteed by you for NGN 40,000.00, is now 45 days in default. A warning prompt is active on your portal.', 'CRITICAL', 'LOAN', '100', 45, FALSE, '2026-10-18T08:57:11'),
+(29, 'ALL_ADMIN', NULL, 'LOAN_DEFAULT', '90-Day Loan Default Notice: L-WMC-2026-A30ED407', 'CRITICAL: Loan L-WMC-2026-A30ED407 (Olaleke Olaoye) has reached 90 days default (Balance: NGN 30,000.00). FinSec & President action required to authorize foreclosure offset.', 'DANGER', 'LOAN', '100', 90, FALSE, '2026-10-18T08:58:20'),
+(30, 'MEMBER', 1, 'LOAN_DEFAULT', '90-Day Guaranteed Loan Default Alert: L-WMC-2026-A30ED407', 'CRITICAL NOTICE: Loan L-WMC-2026-A30ED407 for Olaleke Olaoye has reached 90 days in default. Executive offset against your encumbered regular savings (NGN 40,000.00) has been submitted for President & FinSec sign-off.', 'DANGER', 'LOAN', '100', 90, FALSE, '2026-10-18T08:58:20'),
+(31, 'MEMBER', 1, 'LOAN_DEFAULT', '90-Day Guaranteed Loan Default Alert: L-WMC-2026-A30ED407', 'CRITICAL NOTICE: Loan L-WMC-2026-A30ED407 for Olaleke Olaoye has reached 90 days in default. Executive offset against your encumbered regular savings (NGN 40,000.00) has been submitted for President & FinSec sign-off.', 'DANGER', 'LOAN', '100', 90, FALSE, '2026-10-18T08:58:20')
+ON CONFLICT DO NOTHING;
+
+SELECT setval(pg_get_serial_sequence('public.system_notifications', 'id'), COALESCE((SELECT MAX(id) FROM public.system_notifications), 1), true);
+
+-- ---------------------------------------------------------------------
+-- Table: audit_logs (528 records)
+-- ---------------------------------------------------------------------
+INSERT INTO public.audit_logs (id, user_id, actor_name, actor_role, action, resource_type, resource_id, ip_address, user_agent, details_before, details_after, summary, created_at) VALUES
+(1, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_CREATED', 'ROLE', '21', NULL, NULL, NULL, '{"role_code": "CREDIT_INSPECTOR_V2", "role_name": "Credit Risk & Field Inspector", "permissions": ["apply_loan", "credit_committee_approval", "system_audit"]}', 'Created custom role CREDIT_INSPECTOR_V2 with 3 permissions.', '2026-10-17T11:32:19'),
+(2, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_ASSIGNED', 'MEMBER_ROLE', '2:21', NULL, NULL, NULL, '{"member_id": 2, "role_code": "CREDIT_INSPECTOR_V2", "member_code": "WMC-2026-002"}', 'Assigned role Credit Risk & Field Inspector (CREDIT_INSPECTOR_V2) to member WMC-2026-002.', '2026-10-17T11:32:19'),
+(3, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_CREATED', 'ROLE', '22', NULL, NULL, NULL, '{"role_code": "ROLE_TEST_1792233244", "role_name": "Credit Risk Inspector 1792233244", "permissions": ["apply_loan", "credit_committee_approval", "system_audit"]}', 'Created custom role ROLE_TEST_1792233244 with 3 permissions.', '2026-10-17T11:34:04'),
+(4, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_ASSIGNED', 'MEMBER_ROLE', '2:22', NULL, NULL, NULL, '{"member_id": 2, "role_code": "ROLE_TEST_1792233244", "member_code": "WMC-2026-002"}', 'Assigned role Credit Risk Inspector 1792233244 (ROLE_TEST_1792233244) to member WMC-2026-002.', '2026-10-17T11:34:05'),
+(5, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_CREATED', 'ROLE', '23', NULL, NULL, NULL, '{"role_code": "ROLE_TEST_1792233291", "role_name": "Credit Risk Inspector 1792233291", "permissions": ["apply_loan", "credit_committee_approval", "system_audit"]}', 'Created custom role ROLE_TEST_1792233291 with 3 permissions.', '2026-10-17T11:34:51'),
+(6, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_ASSIGNED', 'MEMBER_ROLE', '2:23', NULL, NULL, NULL, '{"member_id": 2, "role_code": "ROLE_TEST_1792233291", "member_code": "WMC-2026-002"}', 'Assigned role Credit Risk Inspector 1792233291 (ROLE_TEST_1792233291) to member WMC-2026-002.', '2026-10-17T11:34:51'),
+(7, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_REVOKED', 'MEMBER_ROLE', '2:23', NULL, NULL, '{"role_id": 23, "member_id": 2}', NULL, 'Revoked role ID 23 from member ID 2.', '2026-10-17T11:34:51'),
+(8, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_CREATED', 'ROLE', '24', NULL, NULL, NULL, '{"role_code": "ROLE_TEST_1792233354", "role_name": "Credit Risk Inspector 1792233354", "permissions": ["apply_loan", "credit_committee_approval", "system_audit"]}', 'Created custom role ROLE_TEST_1792233354 with 3 permissions.', '2026-10-17T11:35:54'),
+(9, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_ASSIGNED', 'MEMBER_ROLE', '2:24', NULL, NULL, NULL, '{"member_id": 2, "role_code": "ROLE_TEST_1792233354", "member_code": "WMC-2026-002"}', 'Assigned role Credit Risk Inspector 1792233354 (ROLE_TEST_1792233354) to member WMC-2026-002.', '2026-10-17T11:35:54'),
+(10, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_REVOKED', 'MEMBER_ROLE', '2:24', NULL, NULL, '{"role_id": 24, "member_id": 2}', NULL, 'Revoked role ID 24 from member ID 2.', '2026-10-17T11:35:54'),
+(11, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_CREATED', 'ROLE', '25', NULL, NULL, NULL, '{"role_code": "ROLE_TEST_1792234319", "role_name": "Credit Risk Inspector 1792234319", "permissions": ["apply_loan", "credit_committee_approval", "system_audit"]}', 'Created custom role ROLE_TEST_1792234319 with 3 permissions.', '2026-10-17T11:51:59'),
+(12, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_ASSIGNED', 'MEMBER_ROLE', '2:25', NULL, NULL, NULL, '{"member_id": 2, "role_code": "ROLE_TEST_1792234319", "member_code": "WMC-2026-002"}', 'Assigned role Credit Risk Inspector 1792234319 (ROLE_TEST_1792234319) to member WMC-2026-002.', '2026-10-17T11:51:59'),
+(13, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_REVOKED', 'MEMBER_ROLE', '2:25', NULL, NULL, '{"role_id": 25, "member_id": 2}', NULL, 'Revoked role ID 25 from member ID 2.', '2026-10-17T11:51:59'),
+(14, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '1', NULL, NULL, NULL, '{"purpose": "Professional Equipment Acquisition", "tenure_months": 6, "loan_reference": "L-WMC-2026-8FC92F65", "principal_amount": 60000.0}', 'Lodge loan application L-WMC-2026-8FC92F65 for NGN 60,000.00 (6 months).', '2026-10-17T11:51:59'),
+(15, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_CREATED', 'ROLE', '26', NULL, NULL, NULL, '{"role_code": "ROLE_TEST_1792234568", "role_name": "Credit Risk Inspector 1792234568", "permissions": ["apply_loan", "credit_committee_approval", "system_audit"]}', 'Created custom role ROLE_TEST_1792234568 with 3 permissions.', '2026-10-17T11:56:08'),
+(16, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_ASSIGNED', 'MEMBER_ROLE', '2:26', NULL, NULL, NULL, '{"member_id": 2, "role_code": "ROLE_TEST_1792234568", "member_code": "WMC-2026-002"}', 'Assigned role Credit Risk Inspector 1792234568 (ROLE_TEST_1792234568) to member WMC-2026-002.', '2026-10-17T11:56:08'),
+(17, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_REVOKED', 'MEMBER_ROLE', '2:26', NULL, NULL, '{"role_id": 26, "member_id": 2}', NULL, 'Revoked role ID 26 from member ID 2.', '2026-10-17T11:56:09'),
+(18, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '2', NULL, NULL, NULL, '{"purpose": "Professional Equipment Acquisition", "tenure_months": 6, "loan_reference": "L-WMC-2026-93622EA9", "principal_amount": 60000.0}', 'Lodge loan application L-WMC-2026-93622EA9 for NGN 60,000.00 (6 months).', '2026-10-17T11:56:09'),
+(19, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_CREATED', 'ROLE', '27', NULL, NULL, NULL, '{"role_code": "ROLE_TEST_1792235630", "role_name": "Credit Risk Inspector 1792235630", "permissions": ["apply_loan", "credit_committee_approval", "system_audit"]}', 'Created custom role ROLE_TEST_1792235630 with 3 permissions.', '2026-10-17T12:13:50'),
+(20, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_ASSIGNED', 'MEMBER_ROLE', '2:27', NULL, NULL, NULL, '{"member_id": 2, "role_code": "ROLE_TEST_1792235630", "member_code": "WMC-2026-002"}', 'Assigned role Credit Risk Inspector 1792235630 (ROLE_TEST_1792235630) to member WMC-2026-002.', '2026-10-17T12:13:50'),
+(21, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_REVOKED', 'MEMBER_ROLE', '2:27', NULL, NULL, '{"role_id": 27, "member_id": 2}', NULL, 'Revoked role ID 27 from member ID 2.', '2026-10-17T12:13:51'),
+(22, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '3', NULL, NULL, NULL, '{"purpose": "Professional Equipment Acquisition", "tenure_months": 6, "loan_reference": "L-WMC-2026-45583D5F", "principal_amount": 60000.0}', 'Lodge loan application L-WMC-2026-45583D5F for NGN 60,000.00 (6 months).', '2026-10-17T12:13:51'),
+(23, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_CREATED', 'ROLE', '28', NULL, NULL, NULL, '{"role_code": "ROLE_TEST_1792235727", "role_name": "Credit Risk Inspector 1792235727", "permissions": ["apply_loan", "credit_committee_approval", "system_audit"]}', 'Created custom role ROLE_TEST_1792235727 with 3 permissions.', '2026-10-17T12:15:27'),
+(24, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_ASSIGNED', 'MEMBER_ROLE', '2:28', NULL, NULL, NULL, '{"member_id": 2, "role_code": "ROLE_TEST_1792235727", "member_code": "WMC-2026-002"}', 'Assigned role Credit Risk Inspector 1792235727 (ROLE_TEST_1792235727) to member WMC-2026-002.', '2026-10-17T12:15:27'),
+(25, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_REVOKED', 'MEMBER_ROLE', '2:28', NULL, NULL, '{"role_id": 28, "member_id": 2}', NULL, 'Revoked role ID 28 from member ID 2.', '2026-10-17T12:15:27'),
+(26, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '4', NULL, NULL, NULL, '{"purpose": "Professional Equipment Acquisition", "tenure_months": 6, "loan_reference": "L-WMC-2026-4B4CF300", "principal_amount": 60000.0}', 'Lodge loan application L-WMC-2026-4B4CF300 for NGN 60,000.00 (6 months).', '2026-10-17T12:15:27'),
+(27, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '4', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "FINANCIAL_SECRETARY", "status": "PENDING", "percent": 33}', 'Approved to 33% on loan L-WMC-2026-4B4CF300.', '2026-10-17T12:15:27'),
+(28, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '4', NULL, NULL, '{"stage": "FINANCIAL_SECRETARY", "percent": 33}', '{"stage": "TREASURER", "status": "PENDING", "percent": 66}', 'Approved to 66% on loan L-WMC-2026-4B4CF300.', '2026-10-17T12:15:27'),
+(29, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '4', NULL, NULL, '{"stage": "TREASURER", "percent": 66}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Approved to 100% on loan L-WMC-2026-4B4CF300.', '2026-10-17T12:15:28'),
+(30, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_CREATED', 'ROLE', '29', NULL, NULL, NULL, '{"role_code": "ROLE_TEST_1792235753", "role_name": "Credit Risk Inspector 1792235753", "permissions": ["apply_loan", "credit_committee_approval", "system_audit"]}', 'Created custom role ROLE_TEST_1792235753 with 3 permissions.', '2026-10-17T12:15:53'),
+(31, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_ASSIGNED', 'MEMBER_ROLE', '2:29', NULL, NULL, NULL, '{"member_id": 2, "role_code": "ROLE_TEST_1792235753", "member_code": "WMC-2026-002"}', 'Assigned role Credit Risk Inspector 1792235753 (ROLE_TEST_1792235753) to member WMC-2026-002.', '2026-10-17T12:15:53'),
+(32, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_REVOKED', 'MEMBER_ROLE', '2:29', NULL, NULL, '{"role_id": 29, "member_id": 2}', NULL, 'Revoked role ID 29 from member ID 2.', '2026-10-17T12:15:54'),
+(33, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '5', NULL, NULL, NULL, '{"purpose": "Professional Equipment Acquisition", "tenure_months": 6, "loan_reference": "L-WMC-2026-7CDE907B", "principal_amount": 60000.0}', 'Lodge loan application L-WMC-2026-7CDE907B for NGN 60,000.00 (6 months).', '2026-10-17T12:15:54'),
+(34, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '5', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "FINANCIAL_SECRETARY", "status": "PENDING", "percent": 33}', 'Approved to 33% on loan L-WMC-2026-7CDE907B.', '2026-10-17T12:15:54'),
+(35, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '5', NULL, NULL, '{"stage": "FINANCIAL_SECRETARY", "percent": 33}', '{"stage": "TREASURER", "status": "PENDING", "percent": 66}', 'Approved to 66% on loan L-WMC-2026-7CDE907B.', '2026-10-17T12:15:54'),
+(36, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '5', NULL, NULL, '{"stage": "TREASURER", "percent": 66}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Approved to 100% on loan L-WMC-2026-7CDE907B.', '2026-10-17T12:15:54'),
+(37, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '6', NULL, NULL, NULL, '{"purpose": "Medical Emergency Financing", "tenure_months": 4, "loan_reference": "L-WMC-2026-9EB12EA0", "principal_amount": 50000.0}', 'Lodge loan application L-WMC-2026-9EB12EA0 for NGN 50,000.00 (4 months).', '2026-10-17T12:15:54'),
+(38, 1, 'Qazeem Adebowale', 'PRESIDENT', 'PRESIDENTIAL_OVERRIDE', 'LOAN', '6', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Presidential Override: 100% disbursed on loan L-WMC-2026-9EB12EA0.', '2026-10-17T12:15:54'),
+(39, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '7', NULL, NULL, NULL, '{"purpose": "Commercial Venture Capital", "tenure_months": 12, "loan_reference": "L-WMC-2026-0A52E43B", "principal_amount": 150000.0}', 'Lodge loan application L-WMC-2026-0A52E43B for NGN 150,000.00 (12 months).', '2026-10-17T12:15:54'),
+(40, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_DECLINED', 'LOAN', '7', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "status": "PENDING"}', '{"status": "DECLINED", "decline_reason": "Requested amount exceeds 2x unencumbered savings cap."}', 'Declined loan L-WMC-2026-0A52E43B. Reason: Requested amount exceeds 2x unencumbered savings cap.', '2026-10-17T12:15:54'),
+(41, 2, 'Member', 'MEMBER', 'LOAN_APPEAL_SUBMITTED', 'LOAN_APPEAL', '1', NULL, NULL, '{"status": "DECLINED", "loan_id": 7}', '{"status": "UNDER_APPEAL", "loan_id": 7, "appeal_id": 1}', 'Filed appeal #1 against loan decline L-WMC-2026-0A52E43B.', '2026-10-17T12:15:55'),
+(42, 1, 'Reviewing Officer', 'PRESIDENT', 'LOAN_APPEAL_RESOLVED', 'LOAN_APPEAL', '1', NULL, NULL, '{"status": "PENDING_REVIEW"}', '{"status": "REINSTATE", "response": "Supplementary proof verified. Approved under presidential arbitration."}', 'Resolved appeal #1: REINSTATE.', '2026-10-17T12:15:55'),
+(43, 2, 'Olaleke Olaoye', 'MEMBER', 'MANUAL_PAYMENT_LOGGED', 'MANUAL_PAYMENT', '1', NULL, NULL, NULL, '{"date": "2026-10-17", "amount": 25000.0, "receipt": "/uploads/receipts/polaris_teller_0099.jpg", "reference": "POLARIS-DEP-1792235755"}', 'Logged Polaris Bank transfer of NGN 25,000.00 (Ref: POLARIS-DEP-1792235755).', '2026-10-17T12:15:55'),
+(44, 1, 'Treasury Officer', 'PRESIDENT', 'MANUAL_PAYMENT_VERIFIED', 'MANUAL_PAYMENT', '1', NULL, NULL, '{"status": "PENDING_RECONCILIATION"}', '{"status": "VERIFIED", "distribution": {"status": "SUCCESS", "message": "Successfully auto-distributed NGN 25,000.00 according to Payment Advice #WMC-ADV-202610-0002.", "advice_id": 2, "allocations": {"fines": 0.0, "welfare": 1000.0, "share_capital": 1000.0, "loan_repayment": 0.0, "target_savings": 0.0, "regular_savings": 8000.0, "surplus_regular_savings": 15000.0}, "advice_status": "FULLY_SETTLED", "amount_received": 25000.0, "advice_reference": "WMC-ADV-202610-0002", "payment_reference": "POLARIS-DEP-1792235755", "outstanding_balance": 0.0, "surplus_credited_to_savings": 15000.0, "total_obligations_satisfied": 10000.0}}', 'Verified Polaris payment #1 for NGN 25,000.00 (Ref: POLARIS-DEP-1792235755).', '2026-10-17T12:15:55'),
+(45, 1, 'Executive Officer', 'PRESIDENT', 'DIRECT_MEMBER_CREDIT', 'MEMBER_ACCOUNT', '2', NULL, NULL, NULL, '{"amount": 10000.0, "category": "SAVINGS", "narration": "Test Direct Credit"}', 'Direct credit of NGN 10,000.00 (SAVINGS) to WMC-2026-002.', '2026-10-17T12:16:42'),
+(46, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_CREATED', 'ROLE', '30', NULL, NULL, NULL, '{"role_code": "ROLE_TEST_1792235813", "role_name": "Credit Risk Inspector 1792235813", "permissions": ["apply_loan", "credit_committee_approval", "system_audit"]}', 'Created custom role ROLE_TEST_1792235813 with 3 permissions.', '2026-10-17T12:16:53'),
+(47, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_ASSIGNED', 'MEMBER_ROLE', '2:30', NULL, NULL, NULL, '{"member_id": 2, "role_code": "ROLE_TEST_1792235813", "member_code": "WMC-2026-002"}', 'Assigned role Credit Risk Inspector 1792235813 (ROLE_TEST_1792235813) to member WMC-2026-002.', '2026-10-17T12:16:53'),
+(48, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_REVOKED', 'MEMBER_ROLE', '2:30', NULL, NULL, '{"role_id": 30, "member_id": 2}', NULL, 'Revoked role ID 30 from member ID 2.', '2026-10-17T12:16:54'),
+(49, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '8', NULL, NULL, NULL, '{"purpose": "Professional Equipment Acquisition", "tenure_months": 6, "loan_reference": "L-WMC-2026-E600E75C", "principal_amount": 60000.0}', 'Lodge loan application L-WMC-2026-E600E75C for NGN 60,000.00 (6 months).', '2026-10-17T12:16:54'),
+(50, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '8', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "FINANCIAL_SECRETARY", "status": "PENDING", "percent": 33}', 'Approved to 33% on loan L-WMC-2026-E600E75C.', '2026-10-17T12:16:54')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.audit_logs (id, user_id, actor_name, actor_role, action, resource_type, resource_id, ip_address, user_agent, details_before, details_after, summary, created_at) VALUES
+(51, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '8', NULL, NULL, '{"stage": "FINANCIAL_SECRETARY", "percent": 33}', '{"stage": "TREASURER", "status": "PENDING", "percent": 66}', 'Approved to 66% on loan L-WMC-2026-E600E75C.', '2026-10-17T12:16:54'),
+(52, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '8', NULL, NULL, '{"stage": "TREASURER", "percent": 66}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Approved to 100% on loan L-WMC-2026-E600E75C.', '2026-10-17T12:16:54'),
+(53, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '9', NULL, NULL, NULL, '{"purpose": "Medical Emergency Financing", "tenure_months": 4, "loan_reference": "L-WMC-2026-19495C0D", "principal_amount": 50000.0}', 'Lodge loan application L-WMC-2026-19495C0D for NGN 50,000.00 (4 months).', '2026-10-17T12:16:54'),
+(54, 1, 'Qazeem Adebowale', 'PRESIDENT', 'PRESIDENTIAL_OVERRIDE', 'LOAN', '9', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Presidential Override: 100% disbursed on loan L-WMC-2026-19495C0D.', '2026-10-17T12:16:54'),
+(55, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_CREATED', 'ROLE', '31', NULL, NULL, NULL, '{"role_code": "ROLE_TEST_1792235918", "role_name": "Credit Risk Inspector 1792235918", "permissions": ["apply_loan", "credit_committee_approval", "system_audit"]}', 'Created custom role ROLE_TEST_1792235918 with 3 permissions.', '2026-10-17T12:18:38'),
+(56, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_ASSIGNED', 'MEMBER_ROLE', '2:31', NULL, NULL, NULL, '{"member_id": 2, "role_code": "ROLE_TEST_1792235918", "member_code": "WMC-2026-002"}', 'Assigned role Credit Risk Inspector 1792235918 (ROLE_TEST_1792235918) to member WMC-2026-002.', '2026-10-17T12:18:38'),
+(57, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_REVOKED', 'MEMBER_ROLE', '2:31', NULL, NULL, '{"role_id": 31, "member_id": 2}', NULL, 'Revoked role ID 31 from member ID 2.', '2026-10-17T12:18:38'),
+(58, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '10', NULL, NULL, NULL, '{"purpose": "Professional Equipment Acquisition", "tenure_months": 6, "loan_reference": "L-WMC-2026-F4289A87", "principal_amount": 60000.0}', 'Lodge loan application L-WMC-2026-F4289A87 for NGN 60,000.00 (6 months).', '2026-10-17T12:18:38'),
+(59, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '10', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "FINANCIAL_SECRETARY", "status": "PENDING", "percent": 33}', 'Approved to 33% on loan L-WMC-2026-F4289A87.', '2026-10-17T12:18:38'),
+(60, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '10', NULL, NULL, '{"stage": "FINANCIAL_SECRETARY", "percent": 33}', '{"stage": "TREASURER", "status": "PENDING", "percent": 66}', 'Approved to 66% on loan L-WMC-2026-F4289A87.', '2026-10-17T12:18:38'),
+(61, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '10', NULL, NULL, '{"stage": "TREASURER", "percent": 66}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Approved to 100% on loan L-WMC-2026-F4289A87.', '2026-10-17T12:18:38'),
+(62, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '11', NULL, NULL, NULL, '{"purpose": "Medical Emergency Financing", "tenure_months": 4, "loan_reference": "L-WMC-2026-1B64AC71", "principal_amount": 50000.0}', 'Lodge loan application L-WMC-2026-1B64AC71 for NGN 50,000.00 (4 months).', '2026-10-17T12:18:38'),
+(63, 1, 'Qazeem Adebowale', 'PRESIDENT', 'PRESIDENTIAL_OVERRIDE', 'LOAN', '11', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Presidential Override: 100% disbursed on loan L-WMC-2026-1B64AC71.', '2026-10-17T12:18:39'),
+(64, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '12', NULL, NULL, NULL, '{"purpose": "Commercial Venture Capital", "tenure_months": 6, "loan_reference": "L-WMC-2026-5C487B8A", "principal_amount": 35000.0}', 'Lodge loan application L-WMC-2026-5C487B8A for NGN 35,000.00 (6 months).', '2026-10-17T12:18:39'),
+(65, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_DECLINED', 'LOAN', '12', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "status": "PENDING"}', '{"status": "DECLINED", "decline_reason": "Requested amount exceeds 2x unencumbered savings cap."}', 'Declined loan L-WMC-2026-5C487B8A. Reason: Requested amount exceeds 2x unencumbered savings cap.', '2026-10-17T12:18:39'),
+(66, 2, 'Member', 'MEMBER', 'LOAN_APPEAL_SUBMITTED', 'LOAN_APPEAL', '2', NULL, NULL, '{"status": "DECLINED", "loan_id": 12}', '{"status": "UNDER_APPEAL", "loan_id": 12, "appeal_id": 2}', 'Filed appeal #2 against loan decline L-WMC-2026-5C487B8A.', '2026-10-17T12:18:39'),
+(67, 1, 'Reviewing Officer', 'PRESIDENT', 'LOAN_APPEAL_RESOLVED', 'LOAN_APPEAL', '2', NULL, NULL, '{"status": "PENDING_REVIEW"}', '{"status": "REINSTATE", "response": "Supplementary proof verified. Approved under presidential arbitration."}', 'Resolved appeal #2: REINSTATE.', '2026-10-17T12:18:39'),
+(68, 2, 'Olaleke Olaoye', 'MEMBER', 'MANUAL_PAYMENT_LOGGED', 'MANUAL_PAYMENT', '2', NULL, NULL, NULL, '{"date": "2026-10-17", "amount": 25000.0, "receipt": "/uploads/receipts/polaris_teller_0099.jpg", "reference": "POLARIS-DEP-1792235919"}', 'Logged Polaris Bank transfer of NGN 25,000.00 (Ref: POLARIS-DEP-1792235919).', '2026-10-17T12:18:39'),
+(69, 1, 'Treasury Officer', 'PRESIDENT', 'MANUAL_PAYMENT_VERIFIED', 'MANUAL_PAYMENT', '2', NULL, NULL, '{"status": "PENDING_RECONCILIATION"}', '{"status": "VERIFIED", "distribution": {"status": "SUCCESS", "message": "Successfully auto-distributed NGN 25,000.00 according to Payment Advice #WMC-ADV-202610-0002.", "advice_id": 2, "allocations": {"fines": 0.0, "welfare": 0.0, "share_capital": 0.0, "loan_repayment": 0.0, "target_savings": 0.0, "regular_savings": 0.0, "surplus_regular_savings": 25000.0}, "advice_status": "FULLY_SETTLED", "amount_received": 25000.0, "advice_reference": "WMC-ADV-202610-0002", "payment_reference": "POLARIS-DEP-1792235919", "outstanding_balance": 0.0, "surplus_credited_to_savings": 25000.0, "total_obligations_satisfied": 0.0}}', 'Verified Polaris payment #2 for NGN 25,000.00 (Ref: POLARIS-DEP-1792235919).', '2026-10-17T12:18:39'),
+(70, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_CREATED', 'ROLE', '32', NULL, NULL, NULL, '{"role_code": "ROLE_TEST_1792235975", "role_name": "Credit Risk Inspector 1792235975", "permissions": ["apply_loan", "credit_committee_approval", "system_audit"]}', 'Created custom role ROLE_TEST_1792235975 with 3 permissions.', '2026-10-17T12:19:35'),
+(71, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_ASSIGNED', 'MEMBER_ROLE', '2:32', NULL, NULL, NULL, '{"member_id": 2, "role_code": "ROLE_TEST_1792235975", "member_code": "WMC-2026-002"}', 'Assigned role Credit Risk Inspector 1792235975 (ROLE_TEST_1792235975) to member WMC-2026-002.', '2026-10-17T12:19:35'),
+(72, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_REVOKED', 'MEMBER_ROLE', '2:32', NULL, NULL, '{"role_id": 32, "member_id": 2}', NULL, 'Revoked role ID 32 from member ID 2.', '2026-10-17T12:19:36'),
+(73, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '13', NULL, NULL, NULL, '{"purpose": "Professional Equipment Acquisition", "tenure_months": 6, "loan_reference": "L-WMC-2026-024087A4", "principal_amount": 60000.0}', 'Lodge loan application L-WMC-2026-024087A4 for NGN 60,000.00 (6 months).', '2026-10-17T12:19:36'),
+(74, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '13', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "FINANCIAL_SECRETARY", "status": "PENDING", "percent": 33}', 'Approved to 33% on loan L-WMC-2026-024087A4.', '2026-10-17T12:19:36'),
+(75, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '13', NULL, NULL, '{"stage": "FINANCIAL_SECRETARY", "percent": 33}', '{"stage": "TREASURER", "status": "PENDING", "percent": 66}', 'Approved to 66% on loan L-WMC-2026-024087A4.', '2026-10-17T12:19:36'),
+(76, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '13', NULL, NULL, '{"stage": "TREASURER", "percent": 66}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Approved to 100% on loan L-WMC-2026-024087A4.', '2026-10-17T12:19:36'),
+(77, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '14', NULL, NULL, NULL, '{"purpose": "Medical Emergency Financing", "tenure_months": 4, "loan_reference": "L-WMC-2026-6B760A07", "principal_amount": 50000.0}', 'Lodge loan application L-WMC-2026-6B760A07 for NGN 50,000.00 (4 months).', '2026-10-17T12:19:36'),
+(78, 1, 'Qazeem Adebowale', 'PRESIDENT', 'PRESIDENTIAL_OVERRIDE', 'LOAN', '14', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Presidential Override: 100% disbursed on loan L-WMC-2026-6B760A07.', '2026-10-17T12:19:36'),
+(79, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '15', NULL, NULL, NULL, '{"purpose": "Commercial Venture Capital", "tenure_months": 6, "loan_reference": "L-WMC-2026-A6D209F2", "principal_amount": 35000.0}', 'Lodge loan application L-WMC-2026-A6D209F2 for NGN 35,000.00 (6 months).', '2026-10-17T12:19:36'),
+(80, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_DECLINED', 'LOAN', '15', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "status": "PENDING"}', '{"status": "DECLINED", "decline_reason": "Requested amount exceeds 2x unencumbered savings cap."}', 'Declined loan L-WMC-2026-A6D209F2. Reason: Requested amount exceeds 2x unencumbered savings cap.', '2026-10-17T12:19:36'),
+(81, 2, 'Member', 'MEMBER', 'LOAN_APPEAL_SUBMITTED', 'LOAN_APPEAL', '3', NULL, NULL, '{"status": "DECLINED", "loan_id": 15}', '{"status": "UNDER_APPEAL", "loan_id": 15, "appeal_id": 3}', 'Filed appeal #3 against loan decline L-WMC-2026-A6D209F2.', '2026-10-17T12:19:37'),
+(82, 1, 'Reviewing Officer', 'PRESIDENT', 'LOAN_APPEAL_RESOLVED', 'LOAN_APPEAL', '3', NULL, NULL, '{"status": "PENDING_REVIEW"}', '{"status": "REINSTATE", "response": "Supplementary proof verified. Approved under presidential arbitration."}', 'Resolved appeal #3: REINSTATE.', '2026-10-17T12:19:37'),
+(83, 2, 'Olaleke Olaoye', 'MEMBER', 'MANUAL_PAYMENT_LOGGED', 'MANUAL_PAYMENT', '3', NULL, NULL, NULL, '{"date": "2026-10-17", "amount": 25000.0, "receipt": "/uploads/receipts/polaris_teller_0099.jpg", "reference": "POLARIS-DEP-1792235977"}', 'Logged Polaris Bank transfer of NGN 25,000.00 (Ref: POLARIS-DEP-1792235977).', '2026-10-17T12:19:37'),
+(84, 1, 'Treasury Officer', 'PRESIDENT', 'MANUAL_PAYMENT_VERIFIED', 'MANUAL_PAYMENT', '3', NULL, NULL, '{"status": "PENDING_RECONCILIATION"}', '{"status": "VERIFIED", "distribution": {"status": "SUCCESS", "message": "Successfully auto-distributed NGN 25,000.00 according to Payment Advice #WMC-ADV-202610-0002.", "advice_id": 2, "allocations": {"fines": 0.0, "welfare": 0.0, "share_capital": 0.0, "loan_repayment": 0.0, "target_savings": 0.0, "regular_savings": 0.0, "surplus_regular_savings": 25000.0}, "advice_status": "FULLY_SETTLED", "amount_received": 25000.0, "advice_reference": "WMC-ADV-202610-0002", "payment_reference": "POLARIS-DEP-1792235977", "outstanding_balance": 0.0, "surplus_credited_to_savings": 25000.0, "total_obligations_satisfied": 0.0}}', 'Verified Polaris payment #3 for NGN 25,000.00 (Ref: POLARIS-DEP-1792235977).', '2026-10-17T12:19:37'),
+(85, 1, 'Executive Officer', 'PRESIDENT', 'DIRECT_MEMBER_CREDIT', 'MEMBER_ACCOUNT', '2', NULL, NULL, NULL, '{"amount": 10000.0, "category": "SAVINGS", "narration": "Statutory incentive dividend allocation authorized by Board"}', 'Direct credit of NGN 10,000.00 (SAVINGS) to WMC-2026-002.', '2026-10-17T12:19:37'),
+(86, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_CREATED', 'ROLE', '33', NULL, NULL, NULL, '{"role_code": "ROLE_TEST_1792236054", "role_name": "Credit Risk Inspector 1792236054", "permissions": ["apply_loan", "credit_committee_approval", "system_audit"]}', 'Created custom role ROLE_TEST_1792236054 with 3 permissions.', '2026-10-17T12:20:54'),
+(87, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_ASSIGNED', 'MEMBER_ROLE', '2:33', NULL, NULL, NULL, '{"member_id": 2, "role_code": "ROLE_TEST_1792236054", "member_code": "WMC-2026-002"}', 'Assigned role Credit Risk Inspector 1792236054 (ROLE_TEST_1792236054) to member WMC-2026-002.', '2026-10-17T12:20:54'),
+(88, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_REVOKED', 'MEMBER_ROLE', '2:33', NULL, NULL, '{"role_id": 33, "member_id": 2}', NULL, 'Revoked role ID 33 from member ID 2.', '2026-10-17T12:20:54'),
+(89, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '16', NULL, NULL, NULL, '{"purpose": "Professional Equipment Acquisition", "tenure_months": 6, "loan_reference": "L-WMC-2026-C047AD92", "principal_amount": 60000.0}', 'Lodge loan application L-WMC-2026-C047AD92 for NGN 60,000.00 (6 months).', '2026-10-17T12:20:54'),
+(90, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '16', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "FINANCIAL_SECRETARY", "status": "PENDING", "percent": 33}', 'Approved to 33% on loan L-WMC-2026-C047AD92.', '2026-10-17T12:20:54'),
+(91, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '16', NULL, NULL, '{"stage": "FINANCIAL_SECRETARY", "percent": 33}', '{"stage": "TREASURER", "status": "PENDING", "percent": 66}', 'Approved to 66% on loan L-WMC-2026-C047AD92.', '2026-10-17T12:20:54'),
+(92, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '16', NULL, NULL, '{"stage": "TREASURER", "percent": 66}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Approved to 100% on loan L-WMC-2026-C047AD92.', '2026-10-17T12:20:55'),
+(93, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '17', NULL, NULL, NULL, '{"purpose": "Medical Emergency Financing", "tenure_months": 4, "loan_reference": "L-WMC-2026-25CED089", "principal_amount": 50000.0}', 'Lodge loan application L-WMC-2026-25CED089 for NGN 50,000.00 (4 months).', '2026-10-17T12:20:55'),
+(94, 1, 'Qazeem Adebowale', 'PRESIDENT', 'PRESIDENTIAL_OVERRIDE', 'LOAN', '17', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Presidential Override: 100% disbursed on loan L-WMC-2026-25CED089.', '2026-10-17T12:20:55'),
+(95, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '18', NULL, NULL, NULL, '{"purpose": "Commercial Venture Capital", "tenure_months": 6, "loan_reference": "L-WMC-2026-9FF9CCAC", "principal_amount": 35000.0}', 'Lodge loan application L-WMC-2026-9FF9CCAC for NGN 35,000.00 (6 months).', '2026-10-17T12:20:55'),
+(96, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_DECLINED', 'LOAN', '18', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "status": "PENDING"}', '{"status": "DECLINED", "decline_reason": "Requested amount exceeds 2x unencumbered savings cap."}', 'Declined loan L-WMC-2026-9FF9CCAC. Reason: Requested amount exceeds 2x unencumbered savings cap.', '2026-10-17T12:20:55'),
+(97, 2, 'Member', 'MEMBER', 'LOAN_APPEAL_SUBMITTED', 'LOAN_APPEAL', '4', NULL, NULL, '{"status": "DECLINED", "loan_id": 18}', '{"status": "UNDER_APPEAL", "loan_id": 18, "appeal_id": 4}', 'Filed appeal #4 against loan decline L-WMC-2026-9FF9CCAC.', '2026-10-17T12:20:55'),
+(98, 1, 'Reviewing Officer', 'PRESIDENT', 'LOAN_APPEAL_RESOLVED', 'LOAN_APPEAL', '4', NULL, NULL, '{"status": "PENDING_REVIEW"}', '{"status": "REINSTATE", "response": "Supplementary proof verified. Approved under presidential arbitration."}', 'Resolved appeal #4: REINSTATE.', '2026-10-17T12:20:55'),
+(99, 2, 'Olaleke Olaoye', 'MEMBER', 'MANUAL_PAYMENT_LOGGED', 'MANUAL_PAYMENT', '4', NULL, NULL, NULL, '{"date": "2026-10-17", "amount": 25000.0, "receipt": "/uploads/receipts/polaris_teller_0099.jpg", "reference": "POLARIS-DEP-1792236055"}', 'Logged Polaris Bank transfer of NGN 25,000.00 (Ref: POLARIS-DEP-1792236055).', '2026-10-17T12:20:55'),
+(100, 1, 'Treasury Officer', 'PRESIDENT', 'MANUAL_PAYMENT_VERIFIED', 'MANUAL_PAYMENT', '4', NULL, NULL, '{"status": "PENDING_RECONCILIATION"}', '{"status": "VERIFIED", "distribution": {"status": "SUCCESS", "message": "Successfully auto-distributed NGN 25,000.00 according to Payment Advice #WMC-ADV-202610-0002.", "advice_id": 2, "allocations": {"fines": 0.0, "welfare": 0.0, "share_capital": 0.0, "loan_repayment": 0.0, "target_savings": 0.0, "regular_savings": 0.0, "surplus_regular_savings": 25000.0}, "advice_status": "FULLY_SETTLED", "amount_received": 25000.0, "advice_reference": "WMC-ADV-202610-0002", "payment_reference": "POLARIS-DEP-1792236055", "outstanding_balance": 0.0, "surplus_credited_to_savings": 25000.0, "total_obligations_satisfied": 0.0}}', 'Verified Polaris payment #4 for NGN 25,000.00 (Ref: POLARIS-DEP-1792236055).', '2026-10-17T12:20:55')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.audit_logs (id, user_id, actor_name, actor_role, action, resource_type, resource_id, ip_address, user_agent, details_before, details_after, summary, created_at) VALUES
+(101, 1, 'Executive Officer', 'PRESIDENT', 'DIRECT_MEMBER_CREDIT', 'MEMBER_ACCOUNT', '2', NULL, NULL, NULL, '{"amount": 10000.0, "category": "SAVINGS", "narration": "Statutory incentive dividend allocation authorized by Board"}', 'Direct credit of NGN 10,000.00 (SAVINGS) to WMC-2026-002.', '2026-10-17T12:20:56'),
+(102, 1, 'Executive Officer', 'PRESIDENT', 'PAYMENT_ADVICE_MODIFIED', 'PAYMENT_ADVICE', '1', NULL, NULL, '{"loan": 0.0, "fines": 0.0, "shares": 1000.0, "arrears": 0.0, "savings": 8000.0, "targets": 0.0, "welfare": 1000.0, "total_expected": 10000.0}', '{"loan": 0.0, "fines": 0.0, "shares": 3000.0, "arrears": 0.0, "savings": 22000.0, "targets": 0.0, "welfare": 1000.0, "total_expected": 26000.0}', 'Modified advice #1 (THIS_MONTH_ONLY). Justification: Cooperator requested temporary voluntary increase in share equity per SOP', '2026-10-17T12:20:56'),
+(103, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_CREATED', 'ROLE', '34', NULL, NULL, NULL, '{"role_code": "ROLE_TEST_1792236090", "role_name": "Credit Risk Inspector 1792236090", "permissions": ["apply_loan", "credit_committee_approval", "system_audit"]}', 'Created custom role ROLE_TEST_1792236090 with 3 permissions.', '2026-10-17T12:21:31'),
+(104, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_ASSIGNED', 'MEMBER_ROLE', '2:34', NULL, NULL, NULL, '{"member_id": 2, "role_code": "ROLE_TEST_1792236090", "member_code": "WMC-2026-002"}', 'Assigned role Credit Risk Inspector 1792236090 (ROLE_TEST_1792236090) to member WMC-2026-002.', '2026-10-17T12:21:31'),
+(105, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_REVOKED', 'MEMBER_ROLE', '2:34', NULL, NULL, '{"role_id": 34, "member_id": 2}', NULL, 'Revoked role ID 34 from member ID 2.', '2026-10-17T12:21:31'),
+(106, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '19', NULL, NULL, NULL, '{"purpose": "Professional Equipment Acquisition", "tenure_months": 6, "loan_reference": "L-WMC-2026-D7E76024", "principal_amount": 60000.0}', 'Lodge loan application L-WMC-2026-D7E76024 for NGN 60,000.00 (6 months).', '2026-10-17T12:21:31'),
+(107, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '19', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "FINANCIAL_SECRETARY", "status": "PENDING", "percent": 33}', 'Approved to 33% on loan L-WMC-2026-D7E76024.', '2026-10-17T12:21:31'),
+(108, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '19', NULL, NULL, '{"stage": "FINANCIAL_SECRETARY", "percent": 33}', '{"stage": "TREASURER", "status": "PENDING", "percent": 66}', 'Approved to 66% on loan L-WMC-2026-D7E76024.', '2026-10-17T12:21:31'),
+(109, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '19', NULL, NULL, '{"stage": "TREASURER", "percent": 66}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Approved to 100% on loan L-WMC-2026-D7E76024.', '2026-10-17T12:21:31'),
+(110, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '20', NULL, NULL, NULL, '{"purpose": "Medical Emergency Financing", "tenure_months": 4, "loan_reference": "L-WMC-2026-F811C6EA", "principal_amount": 50000.0}', 'Lodge loan application L-WMC-2026-F811C6EA for NGN 50,000.00 (4 months).', '2026-10-17T12:21:31'),
+(111, 1, 'Qazeem Adebowale', 'PRESIDENT', 'PRESIDENTIAL_OVERRIDE', 'LOAN', '20', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Presidential Override: 100% disbursed on loan L-WMC-2026-F811C6EA.', '2026-10-17T12:21:31'),
+(112, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '21', NULL, NULL, NULL, '{"purpose": "Commercial Venture Capital", "tenure_months": 6, "loan_reference": "L-WMC-2026-22F82E14", "principal_amount": 35000.0}', 'Lodge loan application L-WMC-2026-22F82E14 for NGN 35,000.00 (6 months).', '2026-10-17T12:21:31'),
+(113, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_DECLINED', 'LOAN', '21', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "status": "PENDING"}', '{"status": "DECLINED", "decline_reason": "Requested amount exceeds 2x unencumbered savings cap."}', 'Declined loan L-WMC-2026-22F82E14. Reason: Requested amount exceeds 2x unencumbered savings cap.', '2026-10-17T12:21:31'),
+(114, 2, 'Member', 'MEMBER', 'LOAN_APPEAL_SUBMITTED', 'LOAN_APPEAL', '5', NULL, NULL, '{"status": "DECLINED", "loan_id": 21}', '{"status": "UNDER_APPEAL", "loan_id": 21, "appeal_id": 5}', 'Filed appeal #5 against loan decline L-WMC-2026-22F82E14.', '2026-10-17T12:21:32'),
+(115, 1, 'Reviewing Officer', 'PRESIDENT', 'LOAN_APPEAL_RESOLVED', 'LOAN_APPEAL', '5', NULL, NULL, '{"status": "PENDING_REVIEW"}', '{"status": "REINSTATE", "response": "Supplementary proof verified. Approved under presidential arbitration."}', 'Resolved appeal #5: REINSTATE.', '2026-10-17T12:21:32'),
+(116, 2, 'Olaleke Olaoye', 'MEMBER', 'MANUAL_PAYMENT_LOGGED', 'MANUAL_PAYMENT', '5', NULL, NULL, NULL, '{"date": "2026-10-17", "amount": 25000.0, "receipt": "/uploads/receipts/polaris_teller_0099.jpg", "reference": "POLARIS-DEP-1792236092"}', 'Logged Polaris Bank transfer of NGN 25,000.00 (Ref: POLARIS-DEP-1792236092).', '2026-10-17T12:21:32'),
+(117, 1, 'Treasury Officer', 'PRESIDENT', 'MANUAL_PAYMENT_VERIFIED', 'MANUAL_PAYMENT', '5', NULL, NULL, '{"status": "PENDING_RECONCILIATION"}', '{"status": "VERIFIED", "distribution": {"status": "SUCCESS", "message": "Successfully auto-distributed NGN 25,000.00 according to Payment Advice #WMC-ADV-202610-0002.", "advice_id": 2, "allocations": {"fines": 0.0, "welfare": 0.0, "share_capital": 0.0, "loan_repayment": 0.0, "target_savings": 0.0, "regular_savings": 0.0, "surplus_regular_savings": 25000.0}, "advice_status": "FULLY_SETTLED", "amount_received": 25000.0, "advice_reference": "WMC-ADV-202610-0002", "payment_reference": "POLARIS-DEP-1792236092", "outstanding_balance": 0.0, "surplus_credited_to_savings": 25000.0, "total_obligations_satisfied": 0.0}}', 'Verified Polaris payment #5 for NGN 25,000.00 (Ref: POLARIS-DEP-1792236092).', '2026-10-17T12:21:32'),
+(118, 1, 'Executive Officer', 'PRESIDENT', 'DIRECT_MEMBER_CREDIT', 'MEMBER_ACCOUNT', '2', NULL, NULL, NULL, '{"amount": 10000.0, "category": "SAVINGS", "narration": "Statutory incentive dividend allocation authorized by Board"}', 'Direct credit of NGN 10,000.00 (SAVINGS) to WMC-2026-002.', '2026-10-17T12:21:32'),
+(119, 1, 'Executive Officer', 'PRESIDENT', 'PAYMENT_ADVICE_MODIFIED', 'PAYMENT_ADVICE', '1', NULL, NULL, '{"loan": 0.0, "fines": 0.0, "shares": 3000.0, "arrears": 0.0, "savings": 22000.0, "targets": 0.0, "welfare": 1000.0, "total_expected": 26000.0}', '{"loan": 0.0, "fines": 0.0, "shares": 3000.0, "arrears": 0.0, "savings": 22000.0, "targets": 0.0, "welfare": 1000.0, "total_expected": 26000.0}', 'Modified advice #1 (THIS_MONTH_ONLY). Justification: Cooperator requested temporary voluntary increase in share equity per SOP', '2026-10-17T12:21:32'),
+(120, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_CREATED', 'ROLE', '35', NULL, NULL, NULL, '{"role_code": "ROLE_TEST_1792236154", "role_name": "Credit Risk Inspector 1792236154", "permissions": ["apply_loan", "credit_committee_approval", "system_audit"]}', 'Created custom role ROLE_TEST_1792236154 with 3 permissions.', '2026-10-17T12:22:34'),
+(121, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_ASSIGNED', 'MEMBER_ROLE', '2:35', NULL, NULL, NULL, '{"member_id": 2, "role_code": "ROLE_TEST_1792236154", "member_code": "WMC-2026-002"}', 'Assigned role Credit Risk Inspector 1792236154 (ROLE_TEST_1792236154) to member WMC-2026-002.', '2026-10-17T12:22:34'),
+(122, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_REVOKED', 'MEMBER_ROLE', '2:35', NULL, NULL, '{"role_id": 35, "member_id": 2}', NULL, 'Revoked role ID 35 from member ID 2.', '2026-10-17T12:22:34'),
+(123, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '22', NULL, NULL, NULL, '{"purpose": "Professional Equipment Acquisition", "tenure_months": 6, "loan_reference": "L-WMC-2026-3E14355D", "principal_amount": 60000.0}', 'Lodge loan application L-WMC-2026-3E14355D for NGN 60,000.00 (6 months).', '2026-10-17T12:22:34'),
+(124, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '22', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "FINANCIAL_SECRETARY", "status": "PENDING", "percent": 33}', 'Approved to 33% on loan L-WMC-2026-3E14355D.', '2026-10-17T12:22:34'),
+(125, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '22', NULL, NULL, '{"stage": "FINANCIAL_SECRETARY", "percent": 33}', '{"stage": "TREASURER", "status": "PENDING", "percent": 66}', 'Approved to 66% on loan L-WMC-2026-3E14355D.', '2026-10-17T12:22:34'),
+(126, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '22', NULL, NULL, '{"stage": "TREASURER", "percent": 66}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Approved to 100% on loan L-WMC-2026-3E14355D.', '2026-10-17T12:22:34'),
+(127, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '23', NULL, NULL, NULL, '{"purpose": "Medical Emergency Financing", "tenure_months": 4, "loan_reference": "L-WMC-2026-16B82E09", "principal_amount": 50000.0}', 'Lodge loan application L-WMC-2026-16B82E09 for NGN 50,000.00 (4 months).', '2026-10-17T12:22:34'),
+(128, 1, 'Qazeem Adebowale', 'PRESIDENT', 'PRESIDENTIAL_OVERRIDE', 'LOAN', '23', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Presidential Override: 100% disbursed on loan L-WMC-2026-16B82E09.', '2026-10-17T12:22:35'),
+(129, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '24', NULL, NULL, NULL, '{"purpose": "Commercial Venture Capital", "tenure_months": 6, "loan_reference": "L-WMC-2026-1E8346E3", "principal_amount": 35000.0}', 'Lodge loan application L-WMC-2026-1E8346E3 for NGN 35,000.00 (6 months).', '2026-10-17T12:22:35'),
+(130, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_DECLINED', 'LOAN', '24', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "status": "PENDING"}', '{"status": "DECLINED", "decline_reason": "Requested amount exceeds 2x unencumbered savings cap."}', 'Declined loan L-WMC-2026-1E8346E3. Reason: Requested amount exceeds 2x unencumbered savings cap.', '2026-10-17T12:22:35'),
+(131, 2, 'Member', 'MEMBER', 'LOAN_APPEAL_SUBMITTED', 'LOAN_APPEAL', '6', NULL, NULL, '{"status": "DECLINED", "loan_id": 24}', '{"status": "UNDER_APPEAL", "loan_id": 24, "appeal_id": 6}', 'Filed appeal #6 against loan decline L-WMC-2026-1E8346E3.', '2026-10-17T12:22:35'),
+(132, 1, 'Reviewing Officer', 'PRESIDENT', 'LOAN_APPEAL_RESOLVED', 'LOAN_APPEAL', '6', NULL, NULL, '{"status": "PENDING_REVIEW"}', '{"status": "REINSTATE", "response": "Supplementary proof verified. Approved under presidential arbitration."}', 'Resolved appeal #6: REINSTATE.', '2026-10-17T12:22:35'),
+(133, 2, 'Olaleke Olaoye', 'MEMBER', 'MANUAL_PAYMENT_LOGGED', 'MANUAL_PAYMENT', '6', NULL, NULL, NULL, '{"date": "2026-10-17", "amount": 25000.0, "receipt": "/uploads/receipts/polaris_teller_0099.jpg", "reference": "POLARIS-DEP-1792236155"}', 'Logged Polaris Bank transfer of NGN 25,000.00 (Ref: POLARIS-DEP-1792236155).', '2026-10-17T12:22:35'),
+(134, 1, 'Treasury Officer', 'PRESIDENT', 'MANUAL_PAYMENT_VERIFIED', 'MANUAL_PAYMENT', '6', NULL, NULL, '{"status": "PENDING_RECONCILIATION"}', '{"status": "VERIFIED", "distribution": {"status": "SUCCESS", "message": "Successfully auto-distributed NGN 25,000.00 according to Payment Advice #WMC-ADV-202610-0002.", "advice_id": 2, "allocations": {"fines": 0.0, "welfare": 0.0, "share_capital": 0.0, "loan_repayment": 0.0, "target_savings": 0.0, "regular_savings": 0.0, "surplus_regular_savings": 25000.0}, "advice_status": "FULLY_SETTLED", "amount_received": 25000.0, "advice_reference": "WMC-ADV-202610-0002", "payment_reference": "POLARIS-DEP-1792236155", "outstanding_balance": 0.0, "surplus_credited_to_savings": 25000.0, "total_obligations_satisfied": 0.0}}', 'Verified Polaris payment #6 for NGN 25,000.00 (Ref: POLARIS-DEP-1792236155).', '2026-10-17T12:22:35'),
+(135, 1, 'Executive Officer', 'PRESIDENT', 'DIRECT_MEMBER_CREDIT', 'MEMBER_ACCOUNT', '2', NULL, NULL, NULL, '{"amount": 10000.0, "category": "SAVINGS", "narration": "Statutory incentive dividend allocation authorized by Board"}', 'Direct credit of NGN 10,000.00 (SAVINGS) to WMC-2026-002.', '2026-10-17T12:22:35'),
+(136, 1, 'Executive Officer', 'PRESIDENT', 'PAYMENT_ADVICE_MODIFIED', 'PAYMENT_ADVICE', '1', NULL, NULL, '{"loan": 0.0, "fines": 0.0, "shares": 3000.0, "arrears": 0.0, "savings": 22000.0, "targets": 0.0, "welfare": 1000.0, "total_expected": 26000.0}', '{"loan": 0.0, "fines": 0.0, "shares": 3000.0, "arrears": 0.0, "savings": 22000.0, "targets": 0.0, "welfare": 1000.0, "total_expected": 26000.0}', 'Modified advice #1 (THIS_MONTH_ONLY). Justification: Cooperator requested temporary voluntary increase in share equity per SOP', '2026-10-17T12:22:35'),
+(137, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_CREATED', 'ROLE', '36', NULL, NULL, NULL, '{"role_code": "ROLE_TEST_1792237833", "role_name": "Credit Risk Inspector 1792237833", "permissions": ["apply_loan", "credit_committee_approval", "system_audit"]}', 'Created custom role ROLE_TEST_1792237833 with 3 permissions.', '2026-10-17T12:50:33'),
+(138, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_ASSIGNED', 'MEMBER_ROLE', '2:36', NULL, NULL, NULL, '{"member_id": 2, "role_code": "ROLE_TEST_1792237833", "member_code": "WMC-2026-002"}', 'Assigned role Credit Risk Inspector 1792237833 (ROLE_TEST_1792237833) to member WMC-2026-002.', '2026-10-17T12:50:33'),
+(139, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_REVOKED', 'MEMBER_ROLE', '2:36', NULL, NULL, '{"role_id": 36, "member_id": 2}', NULL, 'Revoked role ID 36 from member ID 2.', '2026-10-17T12:50:34'),
+(140, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '25', NULL, NULL, NULL, '{"purpose": "Professional Equipment Acquisition", "tenure_months": 6, "loan_reference": "L-WMC-2026-ACD892B1", "principal_amount": 60000.0}', 'Lodge loan application L-WMC-2026-ACD892B1 for NGN 60,000.00 (6 months).', '2026-10-17T12:50:34'),
+(141, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '25', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "FINANCIAL_SECRETARY", "status": "PENDING", "percent": 33}', 'Approved to 33% on loan L-WMC-2026-ACD892B1.', '2026-10-17T12:50:34'),
+(142, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '25', NULL, NULL, '{"stage": "FINANCIAL_SECRETARY", "percent": 33}', '{"stage": "TREASURER", "status": "PENDING", "percent": 66}', 'Approved to 66% on loan L-WMC-2026-ACD892B1.', '2026-10-17T12:50:34'),
+(143, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '25', NULL, NULL, '{"stage": "TREASURER", "percent": 66}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Approved to 100% on loan L-WMC-2026-ACD892B1.', '2026-10-17T12:50:34'),
+(144, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '26', NULL, NULL, NULL, '{"purpose": "Medical Emergency Financing", "tenure_months": 4, "loan_reference": "L-WMC-2026-9EB3E69D", "principal_amount": 50000.0}', 'Lodge loan application L-WMC-2026-9EB3E69D for NGN 50,000.00 (4 months).', '2026-10-17T12:50:34'),
+(145, 1, 'Qazeem Adebowale', 'PRESIDENT', 'PRESIDENTIAL_OVERRIDE', 'LOAN', '26', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Presidential Override: 100% disbursed on loan L-WMC-2026-9EB3E69D.', '2026-10-17T12:50:34'),
+(146, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '27', NULL, NULL, NULL, '{"purpose": "Commercial Venture Capital", "tenure_months": 6, "loan_reference": "L-WMC-2026-8C2D75DB", "principal_amount": 35000.0}', 'Lodge loan application L-WMC-2026-8C2D75DB for NGN 35,000.00 (6 months).', '2026-10-17T12:50:34'),
+(147, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_DECLINED', 'LOAN', '27', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "status": "PENDING"}', '{"status": "DECLINED", "decline_reason": "Requested amount exceeds 2x unencumbered savings cap."}', 'Declined loan L-WMC-2026-8C2D75DB. Reason: Requested amount exceeds 2x unencumbered savings cap.', '2026-10-17T12:50:34'),
+(148, 2, 'Member', 'MEMBER', 'LOAN_APPEAL_SUBMITTED', 'LOAN_APPEAL', '7', NULL, NULL, '{"status": "DECLINED", "loan_id": 27}', '{"status": "UNDER_APPEAL", "loan_id": 27, "appeal_id": 7}', 'Filed appeal #7 against loan decline L-WMC-2026-8C2D75DB.', '2026-10-17T12:50:35'),
+(149, 1, 'Reviewing Officer', 'PRESIDENT', 'LOAN_APPEAL_RESOLVED', 'LOAN_APPEAL', '7', NULL, NULL, '{"status": "PENDING_REVIEW"}', '{"status": "REINSTATE", "response": "Supplementary proof verified. Approved under presidential arbitration."}', 'Resolved appeal #7: REINSTATE.', '2026-10-17T12:50:35'),
+(150, 2, 'Olaleke Olaoye', 'MEMBER', 'MANUAL_PAYMENT_LOGGED', 'MANUAL_PAYMENT', '7', NULL, NULL, NULL, '{"date": "2026-10-17", "amount": 25000.0, "receipt": "/uploads/receipts/polaris_teller_0099.jpg", "reference": "POLARIS-DEP-1792237835"}', 'Logged Polaris Bank transfer of NGN 25,000.00 (Ref: POLARIS-DEP-1792237835).', '2026-10-17T12:50:35')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.audit_logs (id, user_id, actor_name, actor_role, action, resource_type, resource_id, ip_address, user_agent, details_before, details_after, summary, created_at) VALUES
+(151, 1, 'Treasury Officer', 'PRESIDENT', 'MANUAL_PAYMENT_VERIFIED', 'MANUAL_PAYMENT', '7', NULL, NULL, '{"status": "PENDING_RECONCILIATION"}', '{"status": "VERIFIED", "distribution": {"status": "SUCCESS", "message": "Successfully auto-distributed NGN 25,000.00 according to Payment Advice #WMC-ADV-202610-0002.", "advice_id": 2, "allocations": {"fines": 0.0, "welfare": 0.0, "share_capital": 0.0, "loan_repayment": 0.0, "target_savings": 0.0, "regular_savings": 0.0, "surplus_regular_savings": 25000.0}, "advice_status": "FULLY_SETTLED", "amount_received": 25000.0, "advice_reference": "WMC-ADV-202610-0002", "payment_reference": "POLARIS-DEP-1792237835", "outstanding_balance": 0.0, "surplus_credited_to_savings": 25000.0, "total_obligations_satisfied": 0.0}}', 'Verified Polaris payment #7 for NGN 25,000.00 (Ref: POLARIS-DEP-1792237835).', '2026-10-17T12:50:35'),
+(152, 1, 'Executive Officer', 'PRESIDENT', 'DIRECT_MEMBER_CREDIT', 'MEMBER_ACCOUNT', '2', NULL, NULL, NULL, '{"amount": 10000.0, "category": "SAVINGS", "narration": "Statutory incentive dividend allocation authorized by Board"}', 'Direct credit of NGN 10,000.00 (SAVINGS) to WMC-2026-002.', '2026-10-17T12:50:35'),
+(153, 1, 'Executive Officer', 'PRESIDENT', 'PAYMENT_ADVICE_MODIFIED', 'PAYMENT_ADVICE', '1', NULL, NULL, '{"loan": 0.0, "fines": 0.0, "shares": 3000.0, "arrears": 0.0, "savings": 22000.0, "targets": 0.0, "welfare": 1000.0, "total_expected": 26000.0}', '{"loan": 0.0, "fines": 0.0, "shares": 3000.0, "arrears": 0.0, "savings": 22000.0, "targets": 0.0, "welfare": 1000.0, "total_expected": 26000.0}', 'Modified advice #1 (THIS_MONTH_ONLY). Justification: Cooperator requested temporary voluntary increase in share equity per SOP', '2026-10-17T12:50:35'),
+(154, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '28', NULL, NULL, NULL, '{"purpose": "Working capital financing with peer co-signers", "guarantors": [{"name": "Abdul Wasiu Adebowale", "member_code": "WMC-2026-015", "guaranteed_amount": 25000.0, "guarantor_member_id": 15}, {"name": "Amara Ugbana", "member_code": "WMC-2026-009", "guaranteed_amount": 25000.0, "guarantor_member_id": 14}], "product_name": "Ordinary loan (*2 of savings)", "tenure_months": 6, "loan_reference": "L-WMC-2026-B08B212F", "principal_amount": 50000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-B08B212F for NGN 50,000.00 (6 mos) with 2 guarantor(s).', '2026-10-17T17:36:37'),
+(155, 1, 'Qazeem Adebowale', 'PRESIDENT', 'PRESIDENTIAL_OVERRIDE', 'LOAN', '28', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Presidential Override: 100% disbursed on loan L-WMC-2026-B08B212F.', '2026-10-17T17:36:37'),
+(156, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_CREATED', 'ROLE', '37', NULL, NULL, NULL, '{"role_code": "ROLE_TEST_1792255003", "role_name": "Credit Risk Inspector 1792255003", "permissions": ["apply_loan", "credit_committee_approval", "system_audit"]}', 'Created custom role ROLE_TEST_1792255003 with 3 permissions.', '2026-10-17T17:36:43'),
+(157, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_ASSIGNED', 'MEMBER_ROLE', '2:37', NULL, NULL, NULL, '{"member_id": 2, "role_code": "ROLE_TEST_1792255003", "member_code": "WMC-2026-002"}', 'Assigned role Credit Risk Inspector 1792255003 (ROLE_TEST_1792255003) to member WMC-2026-002.', '2026-10-17T17:36:43'),
+(158, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_REVOKED', 'MEMBER_ROLE', '2:37', NULL, NULL, '{"role_id": 37, "member_id": 2}', NULL, 'Revoked role ID 37 from member ID 2.', '2026-10-17T17:36:43'),
+(159, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '30', NULL, NULL, NULL, '{"purpose": "Professional Equipment Acquisition", "guarantors": [], "product_name": "Ordinary loan (*2 of savings)", "tenure_months": 6, "loan_reference": "L-WMC-2026-4D6E3006", "principal_amount": 60000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-4D6E3006 for NGN 60,000.00 (6 mos) with 0 guarantor(s).', '2026-10-17T17:36:43'),
+(160, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '30', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "FINANCIAL_SECRETARY", "status": "PENDING", "percent": 33}', 'Approved to 33% on loan L-WMC-2026-4D6E3006.', '2026-10-17T17:36:43'),
+(161, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '30', NULL, NULL, '{"stage": "FINANCIAL_SECRETARY", "percent": 33}', '{"stage": "TREASURER", "status": "PENDING", "percent": 66}', 'Approved to 66% on loan L-WMC-2026-4D6E3006.', '2026-10-17T17:36:43'),
+(162, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '30', NULL, NULL, '{"stage": "TREASURER", "percent": 66}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Approved to 100% on loan L-WMC-2026-4D6E3006.', '2026-10-17T17:36:44'),
+(163, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '31', NULL, NULL, NULL, '{"purpose": "Medical Emergency Financing", "guarantors": [], "product_name": "Ordinary loan (*2 of savings)", "tenure_months": 4, "loan_reference": "L-WMC-2026-308E47FD", "principal_amount": 50000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-308E47FD for NGN 50,000.00 (4 mos) with 0 guarantor(s).', '2026-10-17T17:36:44'),
+(164, 1, 'Qazeem Adebowale', 'PRESIDENT', 'PRESIDENTIAL_OVERRIDE', 'LOAN', '31', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Presidential Override: 100% disbursed on loan L-WMC-2026-308E47FD.', '2026-10-17T17:36:44'),
+(165, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '32', NULL, NULL, NULL, '{"purpose": "Commercial Venture Capital", "guarantors": [], "product_name": "Ordinary loan (*2 of savings)", "tenure_months": 6, "loan_reference": "L-WMC-2026-A944D91A", "principal_amount": 35000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-A944D91A for NGN 35,000.00 (6 mos) with 0 guarantor(s).', '2026-10-17T17:36:44'),
+(166, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_DECLINED', 'LOAN', '32', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "status": "PENDING"}', '{"status": "DECLINED", "decline_reason": "Requested amount exceeds 2x unencumbered savings cap."}', 'Declined loan L-WMC-2026-A944D91A. Reason: Requested amount exceeds 2x unencumbered savings cap.', '2026-10-17T17:36:44'),
+(167, 2, 'Member', 'MEMBER', 'LOAN_APPEAL_SUBMITTED', 'LOAN_APPEAL', '8', NULL, NULL, '{"status": "DECLINED", "loan_id": 32}', '{"status": "UNDER_APPEAL", "loan_id": 32, "appeal_id": 8}', 'Filed appeal #8 against loan decline L-WMC-2026-A944D91A.', '2026-10-17T17:36:44'),
+(168, 1, 'Reviewing Officer', 'PRESIDENT', 'LOAN_APPEAL_RESOLVED', 'LOAN_APPEAL', '8', NULL, NULL, '{"status": "PENDING_REVIEW"}', '{"status": "REINSTATE", "response": "Supplementary proof verified. Approved under presidential arbitration."}', 'Resolved appeal #8: REINSTATE.', '2026-10-17T17:36:44'),
+(169, 2, 'Olaleke Olaoye', 'MEMBER', 'MANUAL_PAYMENT_LOGGED', 'MANUAL_PAYMENT', '8', NULL, NULL, NULL, '{"date": "2026-10-17", "amount": 25000.0, "receipt": "/uploads/receipts/polaris_teller_0099.jpg", "reference": "POLARIS-DEP-1792255004"}', 'Logged Polaris Bank transfer of NGN 25,000.00 (Ref: POLARIS-DEP-1792255004).', '2026-10-17T17:36:44'),
+(170, 1, 'Treasury Officer', 'PRESIDENT', 'MANUAL_PAYMENT_VERIFIED', 'MANUAL_PAYMENT', '8', NULL, NULL, '{"status": "PENDING_RECONCILIATION"}', '{"status": "VERIFIED", "distribution": {"status": "SUCCESS", "message": "Successfully auto-distributed NGN 25,000.00 according to Payment Advice #WMC-ADV-202610-0002.", "advice_id": 2, "allocations": {"fines": 0.0, "welfare": 0.0, "share_capital": 0.0, "loan_repayment": 0.0, "target_savings": 0.0, "regular_savings": 0.0, "surplus_regular_savings": 25000.0}, "advice_status": "FULLY_SETTLED", "amount_received": 25000.0, "advice_reference": "WMC-ADV-202610-0002", "payment_reference": "POLARIS-DEP-1792255004", "outstanding_balance": 0.0, "surplus_credited_to_savings": 25000.0, "total_obligations_satisfied": 0.0}}', 'Verified Polaris payment #8 for NGN 25,000.00 (Ref: POLARIS-DEP-1792255004).', '2026-10-17T17:36:44'),
+(171, 1, 'Executive Officer', 'PRESIDENT', 'DIRECT_MEMBER_CREDIT', 'MEMBER_ACCOUNT', '2', NULL, NULL, NULL, '{"amount": 10000.0, "category": "SAVINGS", "narration": "Statutory incentive dividend allocation authorized by Board"}', 'Direct credit of NGN 10,000.00 (SAVINGS) to WMC-2026-002.', '2026-10-17T17:36:44'),
+(172, 1, 'Executive Officer', 'PRESIDENT', 'PAYMENT_ADVICE_MODIFIED', 'PAYMENT_ADVICE', '1', NULL, NULL, '{"loan": 0.0, "fines": 0.0, "shares": 3000.0, "arrears": 0.0, "savings": 22000.0, "targets": 0.0, "welfare": 1000.0, "total_expected": 26000.0}', '{"loan": 0.0, "fines": 0.0, "shares": 3000.0, "arrears": 0.0, "savings": 22000.0, "targets": 0.0, "welfare": 1000.0, "total_expected": 26000.0}', 'Modified advice #1 (THIS_MONTH_ONLY). Justification: Cooperator requested temporary voluntary increase in share equity per SOP', '2026-10-17T17:36:44'),
+(173, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_CREATED', 'ROLE', '38', NULL, NULL, NULL, '{"role_code": "ROLE_TEST_1792255534", "role_name": "Credit Risk Inspector 1792255534", "permissions": ["apply_loan", "credit_committee_approval", "system_audit"]}', 'Created custom role ROLE_TEST_1792255534 with 3 permissions.', '2026-10-17T17:45:34'),
+(174, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_ASSIGNED', 'MEMBER_ROLE', '2:38', NULL, NULL, NULL, '{"member_id": 2, "role_code": "ROLE_TEST_1792255534", "member_code": "WMC-2026-002"}', 'Assigned role Credit Risk Inspector 1792255534 (ROLE_TEST_1792255534) to member WMC-2026-002.', '2026-10-17T17:45:34'),
+(175, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_REVOKED', 'MEMBER_ROLE', '2:38', NULL, NULL, '{"role_id": 38, "member_id": 2}', NULL, 'Revoked role ID 38 from member ID 2.', '2026-10-17T17:45:34'),
+(176, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '33', NULL, NULL, NULL, '{"purpose": "Professional Equipment Acquisition", "guarantors": [], "product_name": "Ordinary loan (*2 of savings)", "tenure_months": 6, "loan_reference": "L-WMC-2026-AB3FE649", "principal_amount": 60000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-AB3FE649 for NGN 60,000.00 (6 mos) with 0 guarantor(s).', '2026-10-17T17:45:34'),
+(177, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '33', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "FINANCIAL_SECRETARY", "status": "PENDING", "percent": 33}', 'Approved to 33% on loan L-WMC-2026-AB3FE649.', '2026-10-17T17:45:34'),
+(178, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '33', NULL, NULL, '{"stage": "FINANCIAL_SECRETARY", "percent": 33}', '{"stage": "TREASURER", "status": "PENDING", "percent": 66}', 'Approved to 66% on loan L-WMC-2026-AB3FE649.', '2026-10-17T17:45:34'),
+(179, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '33', NULL, NULL, '{"stage": "TREASURER", "percent": 66}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Approved to 100% on loan L-WMC-2026-AB3FE649.', '2026-10-17T17:45:35'),
+(180, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '34', NULL, NULL, NULL, '{"purpose": "Medical Emergency Financing", "guarantors": [], "product_name": "Ordinary loan (*2 of savings)", "tenure_months": 4, "loan_reference": "L-WMC-2026-D1EFAC40", "principal_amount": 50000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-D1EFAC40 for NGN 50,000.00 (4 mos) with 0 guarantor(s).', '2026-10-17T17:45:35'),
+(181, 1, 'Qazeem Adebowale', 'PRESIDENT', 'PRESIDENTIAL_OVERRIDE', 'LOAN', '34', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Presidential Override: 100% disbursed on loan L-WMC-2026-D1EFAC40.', '2026-10-17T17:45:35'),
+(182, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '35', NULL, NULL, NULL, '{"purpose": "Commercial Venture Capital", "guarantors": [], "product_name": "Ordinary loan (*2 of savings)", "tenure_months": 6, "loan_reference": "L-WMC-2026-9F3D31BD", "principal_amount": 35000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-9F3D31BD for NGN 35,000.00 (6 mos) with 0 guarantor(s).', '2026-10-17T17:45:35'),
+(183, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_DECLINED', 'LOAN', '35', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "status": "PENDING"}', '{"status": "DECLINED", "decline_reason": "Requested amount exceeds 2x unencumbered savings cap."}', 'Declined loan L-WMC-2026-9F3D31BD. Reason: Requested amount exceeds 2x unencumbered savings cap.', '2026-10-17T17:45:35'),
+(184, 2, 'Member', 'MEMBER', 'LOAN_APPEAL_SUBMITTED', 'LOAN_APPEAL', '9', NULL, NULL, '{"status": "DECLINED", "loan_id": 35}', '{"status": "UNDER_APPEAL", "loan_id": 35, "appeal_id": 9}', 'Filed appeal #9 against loan decline L-WMC-2026-9F3D31BD.', '2026-10-17T17:45:35'),
+(185, 1, 'Reviewing Officer', 'PRESIDENT', 'LOAN_APPEAL_RESOLVED', 'LOAN_APPEAL', '9', NULL, NULL, '{"status": "PENDING_REVIEW"}', '{"status": "REINSTATE", "response": "Supplementary proof verified. Approved under presidential arbitration."}', 'Resolved appeal #9: REINSTATE.', '2026-10-17T17:45:35'),
+(186, 2, 'Olaleke Olaoye', 'MEMBER', 'MANUAL_PAYMENT_LOGGED', 'MANUAL_PAYMENT', '9', NULL, NULL, NULL, '{"date": "2026-10-17", "amount": 25000.0, "receipt": "/uploads/receipts/polaris_teller_0099.jpg", "reference": "POLARIS-DEP-1792255535"}', 'Logged Polaris Bank transfer of NGN 25,000.00 (Ref: POLARIS-DEP-1792255535).', '2026-10-17T17:45:35'),
+(187, 1, 'Treasury Officer', 'PRESIDENT', 'MANUAL_PAYMENT_VERIFIED', 'MANUAL_PAYMENT', '9', NULL, NULL, '{"status": "PENDING_RECONCILIATION"}', '{"status": "VERIFIED", "distribution": {"status": "SUCCESS", "message": "Successfully auto-distributed NGN 25,000.00 according to Payment Advice #WMC-ADV-202610-0002.", "advice_id": 2, "allocations": {"fines": 0.0, "welfare": 0.0, "share_capital": 0.0, "loan_repayment": 0.0, "target_savings": 0.0, "regular_savings": 0.0, "surplus_regular_savings": 25000.0}, "advice_status": "FULLY_SETTLED", "amount_received": 25000.0, "advice_reference": "WMC-ADV-202610-0002", "payment_reference": "POLARIS-DEP-1792255535", "outstanding_balance": 0.0, "surplus_credited_to_savings": 25000.0, "total_obligations_satisfied": 0.0}}', 'Verified Polaris payment #9 for NGN 25,000.00 (Ref: POLARIS-DEP-1792255535).', '2026-10-17T17:45:35'),
+(188, 1, 'Executive Officer', 'PRESIDENT', 'DIRECT_MEMBER_CREDIT', 'MEMBER_ACCOUNT', '2', NULL, NULL, NULL, '{"amount": 10000.0, "category": "SAVINGS", "narration": "Statutory incentive dividend allocation authorized by Board"}', 'Direct credit of NGN 10,000.00 (SAVINGS) to WMC-2026-002.', '2026-10-17T17:45:35'),
+(189, 1, 'Executive Officer', 'PRESIDENT', 'PAYMENT_ADVICE_MODIFIED', 'PAYMENT_ADVICE', '1', NULL, NULL, '{"loan": 0.0, "fines": 0.0, "shares": 3000.0, "arrears": 0.0, "savings": 22000.0, "targets": 0.0, "welfare": 1000.0, "total_expected": 26000.0}', '{"loan": 0.0, "fines": 0.0, "shares": 3000.0, "arrears": 0.0, "savings": 22000.0, "targets": 0.0, "welfare": 1000.0, "total_expected": 26000.0}', 'Modified advice #1 (THIS_MONTH_ONLY). Justification: Cooperator requested temporary voluntary increase in share equity per SOP', '2026-10-17T17:45:35'),
+(190, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '36', NULL, NULL, NULL, '{"purpose": "Working capital financing with peer co-signers", "guarantors": [{"name": "Abdul Wasiu Adebowale", "member_code": "WMC-2026-015", "guaranteed_amount": 25000.0, "guarantor_member_id": 15}, {"name": "Amara Ugbana", "member_code": "WMC-2026-009", "guaranteed_amount": 25000.0, "guarantor_member_id": 14}], "product_name": "Ordinary loan (*2 of savings)", "tenure_months": 6, "loan_reference": "L-WMC-2026-7E4740D4", "principal_amount": 50000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-7E4740D4 for NGN 50,000.00 (6 mos) with 2 guarantor(s).', '2026-10-17T18:18:47'),
+(191, 1, 'Qazeem Adebowale', 'PRESIDENT', 'PRESIDENTIAL_OVERRIDE', 'LOAN', '36', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Presidential Override: 100% disbursed on loan L-WMC-2026-7E4740D4.', '2026-10-17T18:18:47'),
+(192, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_CREATED', 'ROLE', '39', NULL, NULL, NULL, '{"role_code": "ROLE_TEST_1792257562", "role_name": "Credit Risk Inspector 1792257562", "permissions": ["apply_loan", "credit_committee_approval", "system_audit"]}', 'Created custom role ROLE_TEST_1792257562 with 3 permissions.', '2026-10-17T18:19:22'),
+(193, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_ASSIGNED', 'MEMBER_ROLE', '2:39', NULL, NULL, NULL, '{"member_id": 2, "role_code": "ROLE_TEST_1792257562", "member_code": "WMC-2026-002"}', 'Assigned role Credit Risk Inspector 1792257562 (ROLE_TEST_1792257562) to member WMC-2026-002.', '2026-10-17T18:19:22'),
+(194, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_REVOKED', 'MEMBER_ROLE', '2:39', NULL, NULL, '{"role_id": 39, "member_id": 2}', NULL, 'Revoked role ID 39 from member ID 2.', '2026-10-17T18:19:22'),
+(195, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '38', NULL, NULL, NULL, '{"purpose": "Professional Equipment Acquisition", "guarantors": [], "product_name": "Ordinary loan (*2 of savings)", "tenure_months": 6, "loan_reference": "L-WMC-2026-679EA013", "principal_amount": 60000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-679EA013 for NGN 60,000.00 (6 mos) with 0 guarantor(s).', '2026-10-17T18:19:22'),
+(196, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '38', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "FINANCIAL_SECRETARY", "status": "PENDING", "percent": 33}', 'Approved to 33% on loan L-WMC-2026-679EA013.', '2026-10-17T18:19:22'),
+(197, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '38', NULL, NULL, '{"stage": "FINANCIAL_SECRETARY", "percent": 33}', '{"stage": "TREASURER", "status": "PENDING", "percent": 66}', 'Approved to 66% on loan L-WMC-2026-679EA013.', '2026-10-17T18:19:22'),
+(198, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '38', NULL, NULL, '{"stage": "TREASURER", "percent": 66}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Approved to 100% on loan L-WMC-2026-679EA013.', '2026-10-17T18:19:22'),
+(199, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '39', NULL, NULL, NULL, '{"purpose": "Medical Emergency Financing", "guarantors": [], "product_name": "Ordinary loan (*2 of savings)", "tenure_months": 4, "loan_reference": "L-WMC-2026-AD838415", "principal_amount": 50000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-AD838415 for NGN 50,000.00 (4 mos) with 0 guarantor(s).', '2026-10-17T18:19:22'),
+(200, 1, 'Qazeem Adebowale', 'PRESIDENT', 'PRESIDENTIAL_OVERRIDE', 'LOAN', '39', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Presidential Override: 100% disbursed on loan L-WMC-2026-AD838415.', '2026-10-17T18:19:22')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.audit_logs (id, user_id, actor_name, actor_role, action, resource_type, resource_id, ip_address, user_agent, details_before, details_after, summary, created_at) VALUES
+(201, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '40', NULL, NULL, NULL, '{"purpose": "Commercial Venture Capital", "guarantors": [], "product_name": "Ordinary loan (*2 of savings)", "tenure_months": 6, "loan_reference": "L-WMC-2026-B635183D", "principal_amount": 35000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-B635183D for NGN 35,000.00 (6 mos) with 0 guarantor(s).', '2026-10-17T18:19:22'),
+(202, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_DECLINED', 'LOAN', '40', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "status": "PENDING"}', '{"status": "DECLINED", "decline_reason": "Requested amount exceeds 2x unencumbered savings cap."}', 'Declined loan L-WMC-2026-B635183D. Reason: Requested amount exceeds 2x unencumbered savings cap.', '2026-10-17T18:19:22'),
+(203, 2, 'Member', 'MEMBER', 'LOAN_APPEAL_SUBMITTED', 'LOAN_APPEAL', '10', NULL, NULL, '{"status": "DECLINED", "loan_id": 40}', '{"status": "UNDER_APPEAL", "loan_id": 40, "appeal_id": 10}', 'Filed appeal #10 against loan decline L-WMC-2026-B635183D.', '2026-10-17T18:19:22'),
+(204, 1, 'Reviewing Officer', 'PRESIDENT', 'LOAN_APPEAL_RESOLVED', 'LOAN_APPEAL', '10', NULL, NULL, '{"status": "PENDING_REVIEW"}', '{"status": "REINSTATE", "response": "Supplementary proof verified. Approved under presidential arbitration."}', 'Resolved appeal #10: REINSTATE.', '2026-10-17T18:19:23'),
+(205, 2, 'Olaleke Olaoye', 'MEMBER', 'MANUAL_PAYMENT_LOGGED', 'MANUAL_PAYMENT', '10', NULL, NULL, NULL, '{"date": "2026-10-17", "amount": 25000.0, "receipt": "/uploads/receipts/polaris_teller_0099.jpg", "reference": "POLARIS-DEP-1792257563"}', 'Logged Polaris Bank transfer of NGN 25,000.00 (Ref: POLARIS-DEP-1792257563).', '2026-10-17T18:19:23'),
+(206, 1, 'Treasury Officer', 'PRESIDENT', 'MANUAL_PAYMENT_VERIFIED', 'MANUAL_PAYMENT', '10', NULL, NULL, '{"status": "PENDING_RECONCILIATION"}', '{"status": "VERIFIED", "distribution": {"status": "SUCCESS", "message": "Successfully auto-distributed NGN 25,000.00 according to Payment Advice #WMC-ADV-202610-0002.", "advice_id": 2, "allocations": {"fines": 0.0, "welfare": 0.0, "share_capital": 0.0, "loan_repayment": 0.0, "target_savings": 0.0, "regular_savings": 0.0, "registration_fee": 5000.0, "surplus_regular_savings": 20000.0}, "advice_status": "FULLY_SETTLED", "amount_received": 25000.0, "advice_reference": "WMC-ADV-202610-0002", "payment_reference": "POLARIS-DEP-1792257563", "outstanding_balance": 0.0, "surplus_credited_to_savings": 20000.0, "total_obligations_satisfied": 5000.0}}', 'Verified Polaris payment #10 for NGN 25,000.00 (Ref: POLARIS-DEP-1792257563).', '2026-10-17T18:19:23'),
+(207, 1, 'Executive Officer', 'PRESIDENT', 'DIRECT_MEMBER_CREDIT', 'MEMBER_ACCOUNT', '2', NULL, NULL, NULL, '{"amount": 10000.0, "category": "SAVINGS", "narration": "Statutory incentive dividend allocation authorized by Board"}', 'Direct credit of NGN 10,000.00 (SAVINGS) to WMC-2026-002.', '2026-10-17T18:19:23'),
+(208, 1, 'Executive Officer', 'PRESIDENT', 'PAYMENT_ADVICE_MODIFIED', 'PAYMENT_ADVICE', '1', NULL, NULL, '{"loan": 0.0, "fines": 0.0, "shares": 3000.0, "arrears": 0.0, "savings": 22000.0, "targets": 0.0, "welfare": 1000.0, "total_expected": 31000.0, "registration_fee": 5000.0}', '{"loan": 0.0, "fines": 0.0, "shares": 3000.0, "arrears": 0.0, "savings": 22000.0, "targets": 0.0, "welfare": 1000.0, "total_expected": 31000.0, "registration_fee": 5000.0}', 'Modified advice #1 (THIS_MONTH_ONLY). Justification: Cooperator requested temporary voluntary increase in share equity per SOP', '2026-10-17T18:19:23'),
+(209, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '41', NULL, NULL, NULL, '{"purpose": "Working capital financing with peer co-signers", "guarantors": [{"name": "Abdul Wasiu Adebowale", "member_code": "WMC-2026-015", "guaranteed_amount": 25000.0, "guarantor_member_id": 15}, {"name": "Amara Ugbana", "member_code": "WMC-2026-009", "guaranteed_amount": 25000.0, "guarantor_member_id": 14}], "product_name": "Ordinary loan (*2 of savings)", "tenure_months": 6, "loan_reference": "L-WMC-2026-4D8EEC21", "principal_amount": 50000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-4D8EEC21 for NGN 50,000.00 (6 mos) with 2 guarantor(s).', '2026-10-17T18:48:37'),
+(210, 1, 'Qazeem Adebowale', 'PRESIDENT', 'PRESIDENTIAL_OVERRIDE', 'LOAN', '41', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Presidential Override: 100% disbursed on loan L-WMC-2026-4D8EEC21.', '2026-10-17T18:48:37'),
+(211, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_CREATED', 'ROLE', '40', NULL, NULL, NULL, '{"role_code": "ROLE_TEST_1792259326", "role_name": "Credit Risk Inspector 1792259326", "permissions": ["apply_loan", "credit_committee_approval", "system_audit"]}', 'Created custom role ROLE_TEST_1792259326 with 3 permissions.', '2026-10-17T18:48:46'),
+(212, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_ASSIGNED', 'MEMBER_ROLE', '2:40', NULL, NULL, NULL, '{"member_id": 2, "role_code": "ROLE_TEST_1792259326", "member_code": "WMC-2026-002"}', 'Assigned role Credit Risk Inspector 1792259326 (ROLE_TEST_1792259326) to member WMC-2026-002.', '2026-10-17T18:48:46'),
+(213, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_REVOKED', 'MEMBER_ROLE', '2:40', NULL, NULL, '{"role_id": 40, "member_id": 2}', NULL, 'Revoked role ID 40 from member ID 2.', '2026-10-17T18:48:46'),
+(214, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '43', NULL, NULL, NULL, '{"purpose": "Professional Equipment Acquisition", "guarantors": [], "product_name": "Ordinary loan (*2 of savings)", "tenure_months": 6, "loan_reference": "L-WMC-2026-BD294F9F", "principal_amount": 60000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-BD294F9F for NGN 60,000.00 (6 mos) with 0 guarantor(s).', '2026-10-17T18:48:47'),
+(215, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '43', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "FINANCIAL_SECRETARY", "status": "PENDING", "percent": 33}', 'Approved to 33% on loan L-WMC-2026-BD294F9F.', '2026-10-17T18:48:51'),
+(216, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '43', NULL, NULL, '{"stage": "FINANCIAL_SECRETARY", "percent": 33}', '{"stage": "TREASURER", "status": "PENDING", "percent": 66}', 'Approved to 66% on loan L-WMC-2026-BD294F9F.', '2026-10-17T18:48:51'),
+(217, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '43', NULL, NULL, '{"stage": "TREASURER", "percent": 66}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Approved to 100% on loan L-WMC-2026-BD294F9F.', '2026-10-17T18:48:51'),
+(218, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '44', NULL, NULL, NULL, '{"purpose": "Medical Emergency Financing", "guarantors": [], "product_name": "Ordinary loan (*2 of savings)", "tenure_months": 4, "loan_reference": "L-WMC-2026-AF0E02D6", "principal_amount": 50000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-AF0E02D6 for NGN 50,000.00 (4 mos) with 0 guarantor(s).', '2026-10-17T18:48:51'),
+(219, 1, 'Qazeem Adebowale', 'PRESIDENT', 'PRESIDENTIAL_OVERRIDE', 'LOAN', '44', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Presidential Override: 100% disbursed on loan L-WMC-2026-AF0E02D6.', '2026-10-17T18:48:51'),
+(220, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '45', NULL, NULL, NULL, '{"purpose": "Commercial Venture Capital", "guarantors": [], "product_name": "Ordinary loan (*2 of savings)", "tenure_months": 6, "loan_reference": "L-WMC-2026-27E5F62A", "principal_amount": 35000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-27E5F62A for NGN 35,000.00 (6 mos) with 0 guarantor(s).', '2026-10-17T18:48:51'),
+(221, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_DECLINED', 'LOAN', '45', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "status": "PENDING"}', '{"status": "DECLINED", "decline_reason": "Requested amount exceeds 2x unencumbered savings cap."}', 'Declined loan L-WMC-2026-27E5F62A. Reason: Requested amount exceeds 2x unencumbered savings cap.', '2026-10-17T18:48:52'),
+(222, 2, 'Member', 'MEMBER', 'LOAN_APPEAL_SUBMITTED', 'LOAN_APPEAL', '11', NULL, NULL, '{"status": "DECLINED", "loan_id": 45}', '{"status": "UNDER_APPEAL", "loan_id": 45, "appeal_id": 11}', 'Filed appeal #11 against loan decline L-WMC-2026-27E5F62A.', '2026-10-17T18:48:52'),
+(223, 1, 'Reviewing Officer', 'PRESIDENT', 'LOAN_APPEAL_RESOLVED', 'LOAN_APPEAL', '11', NULL, NULL, '{"status": "PENDING_REVIEW"}', '{"status": "REINSTATE", "response": "Supplementary proof verified. Approved under presidential arbitration."}', 'Resolved appeal #11: REINSTATE.', '2026-10-17T18:48:52'),
+(224, 2, 'Olaleke Olaoye', 'MEMBER', 'MANUAL_PAYMENT_LOGGED', 'MANUAL_PAYMENT', '11', NULL, NULL, NULL, '{"date": "2026-10-17", "amount": 25000.0, "receipt": "/uploads/receipts/polaris_teller_0099.jpg", "reference": "POLARIS-DEP-1792259332"}', 'Logged Polaris Bank transfer of NGN 25,000.00 (Ref: POLARIS-DEP-1792259332).', '2026-10-17T18:48:52'),
+(225, 1, 'Treasury Officer', 'PRESIDENT', 'MANUAL_PAYMENT_VERIFIED', 'MANUAL_PAYMENT', '11', NULL, NULL, '{"status": "PENDING_RECONCILIATION"}', '{"status": "VERIFIED", "distribution": {"status": "SUCCESS", "message": "Successfully auto-distributed NGN 25,000.00 according to Payment Advice #WMC-ADV-202610-0002.", "advice_id": 2, "allocations": {"fines": 0.0, "welfare": 0.0, "share_capital": 0.0, "loan_repayment": 0.0, "target_savings": 0.0, "regular_savings": 0.0, "registration_fee": 0.0, "surplus_regular_savings": 25000.0}, "advice_status": "FULLY_SETTLED", "amount_received": 25000.0, "advice_reference": "WMC-ADV-202610-0002", "payment_reference": "POLARIS-DEP-1792259332", "outstanding_balance": 0.0, "surplus_credited_to_savings": 25000.0, "total_obligations_satisfied": 0.0}}', 'Verified Polaris payment #11 for NGN 25,000.00 (Ref: POLARIS-DEP-1792259332).', '2026-10-17T18:48:52'),
+(226, 1, 'Executive Officer', 'PRESIDENT', 'DIRECT_MEMBER_CREDIT', 'MEMBER_ACCOUNT', '2', NULL, NULL, NULL, '{"amount": 10000.0, "category": "SAVINGS", "narration": "Statutory incentive dividend allocation authorized by Board"}', 'Direct credit of NGN 10,000.00 (SAVINGS) to WMC-2026-002.', '2026-10-17T18:48:52'),
+(227, 1, 'Executive Officer', 'PRESIDENT', 'PAYMENT_ADVICE_MODIFIED', 'PAYMENT_ADVICE', '1', NULL, NULL, '{"loan": 0.0, "fines": 0.0, "shares": 3000.0, "arrears": 0.0, "savings": 22000.0, "targets": 0.0, "welfare": 1000.0, "total_expected": 31000.0, "registration_fee": 5000.0}', '{"loan": 0.0, "fines": 0.0, "shares": 3000.0, "arrears": 0.0, "savings": 22000.0, "targets": 0.0, "welfare": 1000.0, "total_expected": 31000.0, "registration_fee": 5000.0}', 'Modified advice #1 (THIS_MONTH_ONLY). Justification: Cooperator requested temporary voluntary increase in share equity per SOP', '2026-10-17T18:48:52'),
+(228, 15, 'Abdul Wasiu Adebowale', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '46', NULL, NULL, NULL, '{"purpose": "Personal", "guarantors": [{"name": "Olaleke Olaoye", "member_code": "WMC-2026-002", "guaranteed_amount": 20000.0, "guarantor_member_id": 2}, {"name": "Yusuf Adebowale", "member_code": "WMC-2026-006", "guaranteed_amount": 30000.0, "guarantor_member_id": 6}], "product_name": "Ordinary loan (*2 of savings)", "tenure_months": 6, "loan_reference": "L-WMC-2026-D07A52C6", "principal_amount": 70000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-D07A52C6 for NGN 70,000.00 (6 mos) with 2 guarantor(s).', '2026-10-18T05:49:38'),
+(229, 2, 'Olaleke Olaoye', 'GENERAL_SECRETARY', 'LOAN_APPROVED_STEP', 'LOAN', '46', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "FINANCIAL_SECRETARY", "status": "PENDING", "percent": 33}', 'Approved to 33% on loan L-WMC-2026-D07A52C6.', '2026-10-18T05:51:37'),
+(230, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_DECLINED', 'LOAN', '46', NULL, NULL, '{"stage": "FINANCIAL_SECRETARY", "status": "PENDING"}', '{"status": "DECLINED", "decline_reason": "Yusf Adebowale not qualified as guarantor"}', 'Declined loan L-WMC-2026-D07A52C6. Reason: Yusf Adebowale not qualified as guarantor', '2026-10-18T05:55:12'),
+(231, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '47', NULL, NULL, NULL, '{"purpose": "Working capital financing with peer co-signers", "guarantors": [{"name": "Abdul Wasiu Adebowale", "member_code": "WMC-2026-015", "guaranteed_amount": 25000.0, "guarantor_member_id": 15}, {"name": "Amara Ugbana", "member_code": "WMC-2026-009", "guaranteed_amount": 25000.0, "guarantor_member_id": 14}], "product_name": "Ordinary loan (*2 of savings)", "tenure_months": 6, "loan_reference": "L-WMC-2026-52DC9B5C", "principal_amount": 50000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-52DC9B5C for NGN 50,000.00 (6 mos) with 2 guarantor(s).', '2026-10-18T06:21:57'),
+(232, 1, 'Qazeem Adebowale', 'PRESIDENT', 'PRESIDENTIAL_OVERRIDE', 'LOAN', '47', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Presidential Override: 100% disbursed on loan L-WMC-2026-52DC9B5C.', '2026-10-18T06:21:58'),
+(233, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '49', NULL, NULL, NULL, '{"purpose": "Working capital facility testing guarantor workflow", "guarantors": [{"name": "Qazeem Adebowale", "member_code": "WMC-2026-001", "guaranteed_amount": 50000.0, "guarantor_member_id": 1}], "product_name": "Ordinary loan (*2 of savings)", "tenure_months": 3, "loan_reference": "L-WMC-2026-D9BF39D8", "principal_amount": 50000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-D9BF39D8 for NGN 50,000.00 (3 mos) with 1 guarantor(s).', '2026-10-18T06:24:00'),
+(234, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_CREATED', 'ROLE', '41', NULL, NULL, NULL, '{"role_code": "ROLE_TEST_1792301054", "role_name": "Credit Risk Inspector 1792301054", "permissions": ["apply_loan", "credit_committee_approval", "system_audit"]}', 'Created custom role ROLE_TEST_1792301054 with 3 permissions.', '2026-10-18T06:24:14'),
+(235, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_ASSIGNED', 'MEMBER_ROLE', '2:41', NULL, NULL, NULL, '{"member_id": 2, "role_code": "ROLE_TEST_1792301054", "member_code": "WMC-2026-002"}', 'Assigned role Credit Risk Inspector 1792301054 (ROLE_TEST_1792301054) to member WMC-2026-002.', '2026-10-18T06:24:14'),
+(236, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_REVOKED', 'MEMBER_ROLE', '2:41', NULL, NULL, '{"role_id": 41, "member_id": 2}', NULL, 'Revoked role ID 41 from member ID 2.', '2026-10-18T06:24:14'),
+(237, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '50', NULL, NULL, NULL, '{"purpose": "Professional Equipment Acquisition", "guarantors": [], "product_name": "Ordinary loan (*2 of savings)", "tenure_months": 6, "loan_reference": "L-WMC-2026-BA661222", "principal_amount": 60000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-BA661222 for NGN 60,000.00 (6 mos) with 0 guarantor(s).', '2026-10-18T06:24:14'),
+(238, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '50', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "FINANCIAL_SECRETARY", "status": "PENDING", "percent": 33}', 'Approved to 33% on loan L-WMC-2026-BA661222.', '2026-10-18T06:24:15'),
+(239, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '50', NULL, NULL, '{"stage": "FINANCIAL_SECRETARY", "percent": 33}', '{"stage": "TREASURER", "status": "PENDING", "percent": 66}', 'Approved to 66% on loan L-WMC-2026-BA661222.', '2026-10-18T06:24:15'),
+(240, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '50', NULL, NULL, '{"stage": "TREASURER", "percent": 66}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Approved to 100% on loan L-WMC-2026-BA661222.', '2026-10-18T06:24:15'),
+(241, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '51', NULL, NULL, NULL, '{"purpose": "Medical Emergency Financing", "guarantors": [], "product_name": "Ordinary loan (*2 of savings)", "tenure_months": 4, "loan_reference": "L-WMC-2026-38376CF0", "principal_amount": 50000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-38376CF0 for NGN 50,000.00 (4 mos) with 0 guarantor(s).', '2026-10-18T06:24:15'),
+(242, 1, 'Qazeem Adebowale', 'PRESIDENT', 'PRESIDENTIAL_OVERRIDE', 'LOAN', '51', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Presidential Override: 100% disbursed on loan L-WMC-2026-38376CF0.', '2026-10-18T06:24:15'),
+(243, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '52', NULL, NULL, NULL, '{"purpose": "Commercial Venture Capital", "guarantors": [], "product_name": "Ordinary loan (*2 of savings)", "tenure_months": 6, "loan_reference": "L-WMC-2026-5C03FBF6", "principal_amount": 35000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-5C03FBF6 for NGN 35,000.00 (6 mos) with 0 guarantor(s).', '2026-10-18T06:24:16'),
+(244, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_DECLINED', 'LOAN', '52', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "status": "PENDING"}', '{"status": "DECLINED", "decline_reason": "Requested amount exceeds 2x unencumbered savings cap."}', 'Declined loan L-WMC-2026-5C03FBF6. Reason: Requested amount exceeds 2x unencumbered savings cap.', '2026-10-18T06:24:16'),
+(245, 2, 'Member', 'MEMBER', 'LOAN_APPEAL_SUBMITTED', 'LOAN_APPEAL', '12', NULL, NULL, '{"status": "DECLINED", "loan_id": 52}', '{"status": "UNDER_APPEAL", "loan_id": 52, "appeal_id": 12}', 'Filed appeal #12 against loan decline L-WMC-2026-5C03FBF6.', '2026-10-18T06:24:16'),
+(246, 1, 'Reviewing Officer', 'PRESIDENT', 'LOAN_APPEAL_RESOLVED', 'LOAN_APPEAL', '12', NULL, NULL, '{"status": "PENDING_REVIEW"}', '{"status": "REINSTATE", "response": "Supplementary proof verified. Approved under presidential arbitration."}', 'Resolved appeal #12: REINSTATE.', '2026-10-18T06:24:16'),
+(247, 2, 'Olaleke Olaoye', 'MEMBER', 'MANUAL_PAYMENT_LOGGED', 'MANUAL_PAYMENT', '12', NULL, NULL, NULL, '{"date": "2026-10-17", "amount": 25000.0, "receipt": "/uploads/receipts/polaris_teller_0099.jpg", "reference": "POLARIS-DEP-1792301056"}', 'Logged Polaris Bank transfer of NGN 25,000.00 (Ref: POLARIS-DEP-1792301056).', '2026-10-18T06:24:16'),
+(248, 1, 'Treasury Officer', 'PRESIDENT', 'MANUAL_PAYMENT_VERIFIED', 'MANUAL_PAYMENT', '12', NULL, NULL, '{"status": "PENDING_RECONCILIATION"}', '{"status": "VERIFIED", "distribution": {"status": "SUCCESS", "message": "Successfully auto-distributed NGN 25,000.00 according to Payment Advice #WMC-ADV-202610-0002.", "advice_id": 2, "allocations": {"fines": 0.0, "welfare": 0.0, "share_capital": 0.0, "loan_repayment": 0.0, "target_savings": 0.0, "regular_savings": 0.0, "registration_fee": 0.0, "surplus_regular_savings": 25000.0}, "advice_status": "FULLY_SETTLED", "amount_received": 25000.0, "advice_reference": "WMC-ADV-202610-0002", "payment_reference": "POLARIS-DEP-1792301056", "outstanding_balance": 0.0, "surplus_credited_to_savings": 25000.0, "total_obligations_satisfied": 0.0}}', 'Verified Polaris payment #12 for NGN 25,000.00 (Ref: POLARIS-DEP-1792301056).', '2026-10-18T06:24:16'),
+(249, 1, 'Executive Officer', 'PRESIDENT', 'DIRECT_MEMBER_CREDIT', 'MEMBER_ACCOUNT', '2', NULL, NULL, NULL, '{"amount": 10000.0, "category": "SAVINGS", "narration": "Statutory incentive dividend allocation authorized by Board"}', 'Direct credit of NGN 10,000.00 (SAVINGS) to WMC-2026-002.', '2026-10-18T06:24:17'),
+(250, 1, 'Executive Officer', 'PRESIDENT', 'PAYMENT_ADVICE_MODIFIED', 'PAYMENT_ADVICE', '1', NULL, NULL, '{"loan": 0.0, "fines": 0.0, "shares": 3000.0, "arrears": 0.0, "savings": 22000.0, "targets": 0.0, "welfare": 1000.0, "total_expected": 31000.0, "registration_fee": 5000.0}', '{"loan": 0.0, "fines": 0.0, "shares": 3000.0, "arrears": 0.0, "savings": 22000.0, "targets": 0.0, "welfare": 1000.0, "total_expected": 31000.0, "registration_fee": 5000.0}', 'Modified advice #1 (THIS_MONTH_ONLY). Justification: Cooperator requested temporary voluntary increase in share equity per SOP', '2026-10-18T06:24:17')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.audit_logs (id, user_id, actor_name, actor_role, action, resource_type, resource_id, ip_address, user_agent, details_before, details_after, summary, created_at) VALUES
+(251, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '53', NULL, NULL, NULL, '{"purpose": "Working capital facility testing guarantor workflow", "guarantors": [{"name": "Qazeem Adebowale", "member_code": "WMC-2026-001", "guaranteed_amount": 50000.0, "guarantor_member_id": 1}], "product_name": "Ordinary loan (*2 of savings)", "initial_stage": "GUARANTOR_CONSENT", "tenure_months": 3, "loan_reference": "L-WMC-2026-5DC53AFD", "principal_amount": 50000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-5DC53AFD for NGN 50,000.00 (3 mos) with 1 guarantor(s).', '2026-10-18T06:25:24'),
+(252, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '54', NULL, NULL, NULL, '{"purpose": "Working capital financing with peer co-signers", "guarantors": [{"name": "Abdul Wasiu Adebowale", "member_code": "WMC-2026-015", "guaranteed_amount": 25000.0, "guarantor_member_id": 15}, {"name": "Amara Ugbana", "member_code": "WMC-2026-009", "guaranteed_amount": 25000.0, "guarantor_member_id": 14}], "product_name": "Ordinary loan (*2 of savings)", "tenure_months": 6, "loan_reference": "L-WMC-2026-8AC49362", "principal_amount": 50000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-8AC49362 for NGN 50,000.00 (6 mos) with 2 guarantor(s).', '2026-10-18T06:25:54'),
+(253, 1, 'Qazeem Adebowale', 'PRESIDENT', 'PRESIDENTIAL_OVERRIDE', 'LOAN', '54', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Presidential Override: 100% disbursed on loan L-WMC-2026-8AC49362.', '2026-10-18T06:25:55'),
+(254, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '56', NULL, NULL, NULL, '{"purpose": "Working capital facility testing guarantor workflow", "guarantors": [{"name": "Qazeem Adebowale", "member_code": "WMC-2026-001", "guaranteed_amount": 50000.0, "guarantor_member_id": 1}], "product_name": "Ordinary loan (*2 of savings)", "initial_stage": "GUARANTOR_CONSENT", "tenure_months": 3, "loan_reference": "L-WMC-2026-1A71373B", "principal_amount": 50000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-1A71373B for NGN 50,000.00 (3 mos) with 1 guarantor(s).', '2026-10-18T06:27:29'),
+(255, 1, 'Qazeem Adebowale', 'COOPERATOR', 'GUARANTOR_DIGITAL_CONSENT_SIGNED', 'LOAN_GUARANTOR', '15', NULL, NULL, '{"status": "PENDING_CONSENT"}', '{"status": "ACCEPTED", "loan_reference": "L-WMC-2026-1A71373B", "guaranteed_amount": 50000.0, "all_guarantors_consented": true}', 'Cooperator WMC-2026-001 digitally signed guarantee for NGN 50,000.00 on L-WMC-2026-1A71373B.', '2026-10-18T06:27:29'),
+(256, 9999, 'TestExit Cooperator', 'COOPERATOR', 'MEMBER_EXIT_REQUEST_LODGED', 'MEMBER_EXIT', '1', NULL, NULL, '{"membership_status": "ACTIVE"}', '{"exit_id": 1, "exit_type": "VOLUNTARY_WITHDRAWAL", "net_refund": 170000.0, "outstanding_loans": 0.0, "active_guarantor_commitments": 0}', 'Lodge VOLUNTARY_WITHDRAWAL notice for WMC-TEST-999 (Net Liquidation: NGN 170,000.00).', '2026-10-18T06:27:29'),
+(257, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '57', NULL, NULL, NULL, '{"purpose": "Working capital facility testing guarantor workflow", "guarantors": [{"name": "Qazeem Adebowale", "member_code": "WMC-2026-001", "guaranteed_amount": 50000.0, "guarantor_member_id": 1}], "product_name": "Ordinary loan (*2 of savings)", "initial_stage": "GUARANTOR_CONSENT", "tenure_months": 3, "loan_reference": "L-WMC-2026-4F337287", "principal_amount": 50000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-4F337287 for NGN 50,000.00 (3 mos) with 1 guarantor(s).', '2026-10-18T06:29:35'),
+(258, 1, 'Qazeem Adebowale', 'COOPERATOR', 'GUARANTOR_DIGITAL_CONSENT_SIGNED', 'LOAN_GUARANTOR', '16', NULL, NULL, '{"status": "PENDING_CONSENT"}', '{"status": "ACCEPTED", "loan_reference": "L-WMC-2026-4F337287", "guaranteed_amount": 50000.0, "all_guarantors_consented": true}', 'Cooperator WMC-2026-001 digitally signed guarantee for NGN 50,000.00 on L-WMC-2026-4F337287.', '2026-10-18T06:29:35'),
+(259, 9999, 'TestExit Cooperator', 'COOPERATOR', 'MEMBER_EXIT_REQUEST_LODGED', 'MEMBER_EXIT', '2', NULL, NULL, '{"membership_status": "ACTIVE"}', '{"exit_id": 2, "exit_type": "VOLUNTARY_WITHDRAWAL", "net_refund": 170000.0, "outstanding_loans": 0.0, "active_guarantor_commitments": 0}', 'Lodge VOLUNTARY_WITHDRAWAL notice for WMC-TEST-999 (Net Liquidation: NGN 170,000.00).', '2026-10-18T06:29:36'),
+(260, 1, 'PRESIDENT', 'PRESIDENT', 'MEMBER_EXIT_SETTLEMENT_APPROVED', 'MEMBER_EXIT', '2', NULL, NULL, '{"membership_status": "ACTIVE"}', '{"new_status": "EXITED", "net_refund_amount": 170000.0, "refund_payment_ref": "EXIT-TEST-SETTLE-001"}', 'Approved exit settlement #2 for WMC-TEST-999. Status: EXITED, Refund: NGN 170,000.00.', '2026-10-18T06:29:37'),
+(261, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '58', NULL, NULL, NULL, '{"purpose": "Working capital financing with peer co-signers", "guarantors": [{"name": "Abdul Wasiu Adebowale", "member_code": "WMC-2026-015", "guaranteed_amount": 25000.0, "guarantor_member_id": 15}, {"name": "Amara Ugbana", "member_code": "WMC-2026-009", "guaranteed_amount": 25000.0, "guarantor_member_id": 14}], "product_name": "Ordinary loan (*2 of savings)", "tenure_months": 6, "loan_reference": "L-WMC-2026-27B0D1DA", "principal_amount": 50000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-27B0D1DA for NGN 50,000.00 (6 mos) with 2 guarantor(s).', '2026-10-18T06:29:41'),
+(262, 1, 'Qazeem Adebowale', 'PRESIDENT', 'PRESIDENTIAL_OVERRIDE', 'LOAN', '58', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Presidential Override: 100% disbursed on loan L-WMC-2026-27B0D1DA.', '2026-10-18T06:29:41'),
+(263, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '60', NULL, NULL, NULL, '{"purpose": "Working capital facility testing guarantor workflow", "guarantors": [{"name": "Qazeem Adebowale", "member_code": "WMC-2026-001", "guaranteed_amount": 50000.0, "guarantor_member_id": 1}], "product_name": "Ordinary loan (*2 of savings)", "initial_stage": "GUARANTOR_CONSENT", "tenure_months": 3, "loan_reference": "L-WMC-2026-748AE3C6", "principal_amount": 50000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-748AE3C6 for NGN 50,000.00 (3 mos) with 1 guarantor(s).', '2026-10-18T06:30:15'),
+(264, 1, 'Qazeem Adebowale', 'COOPERATOR', 'GUARANTOR_DIGITAL_CONSENT_SIGNED', 'LOAN_GUARANTOR', '19', NULL, NULL, '{"status": "PENDING_CONSENT"}', '{"status": "ACCEPTED", "loan_reference": "L-WMC-2026-748AE3C6", "guaranteed_amount": 50000.0, "all_guarantors_consented": true}', 'Cooperator WMC-2026-001 digitally signed guarantee for NGN 50,000.00 on L-WMC-2026-748AE3C6.', '2026-10-18T06:30:15'),
+(265, 9999, 'TestExit Cooperator', 'COOPERATOR', 'MEMBER_EXIT_REQUEST_LODGED', 'MEMBER_EXIT', '3', NULL, NULL, '{"membership_status": "ACTIVE"}', '{"exit_id": 3, "exit_type": "VOLUNTARY_WITHDRAWAL", "net_refund": 170000.0, "outstanding_loans": 0.0, "active_guarantor_commitments": 0}', 'Lodge VOLUNTARY_WITHDRAWAL notice for WMC-TEST-999 (Net Liquidation: NGN 170,000.00).', '2026-10-18T06:30:15'),
+(266, 1, 'PRESIDENT', 'PRESIDENT', 'MEMBER_EXIT_SETTLEMENT_APPROVED', 'MEMBER_EXIT', '3', NULL, NULL, '{"membership_status": "ACTIVE"}', '{"new_status": "EXITED", "net_refund_amount": 170000.0, "refund_payment_ref": "EXIT-TEST-SETTLE-001"}', 'Approved exit settlement #3 for WMC-TEST-999. Status: EXITED, Refund: NGN 170,000.00.', '2026-10-18T06:30:16'),
+(267, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '61', NULL, NULL, NULL, '{"purpose": "Working capital facility testing guarantor workflow", "guarantors": [{"name": "Qazeem Adebowale", "member_code": "WMC-2026-001", "guaranteed_amount": 50000.0, "guarantor_member_id": 1}], "product_name": "Ordinary loan (*2 of savings)", "initial_stage": "GUARANTOR_CONSENT", "tenure_months": 3, "loan_reference": "L-WMC-2026-17C9383B", "principal_amount": 50000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-17C9383B for NGN 50,000.00 (3 mos) with 1 guarantor(s).', '2026-10-18T06:30:50'),
+(268, 1, 'Qazeem Adebowale', 'COOPERATOR', 'GUARANTOR_DIGITAL_CONSENT_SIGNED', 'LOAN_GUARANTOR', '20', NULL, NULL, '{"status": "PENDING_CONSENT"}', '{"status": "ACCEPTED", "loan_reference": "L-WMC-2026-17C9383B", "guaranteed_amount": 50000.0, "all_guarantors_consented": true}', 'Cooperator WMC-2026-001 digitally signed guarantee for NGN 50,000.00 on L-WMC-2026-17C9383B.', '2026-10-18T06:30:50'),
+(269, 9999, 'TestExit Cooperator', 'COOPERATOR', 'MEMBER_EXIT_REQUEST_LODGED', 'MEMBER_EXIT', '4', NULL, NULL, '{"membership_status": "ACTIVE"}', '{"exit_id": 4, "exit_type": "VOLUNTARY_WITHDRAWAL", "net_refund": 170000.0, "outstanding_loans": 0.0, "active_guarantor_commitments": 0}', 'Lodge VOLUNTARY_WITHDRAWAL notice for WMC-TEST-999 (Net Liquidation: NGN 170,000.00).', '2026-10-18T06:30:51'),
+(270, 1, 'PRESIDENT', 'PRESIDENT', 'MEMBER_EXIT_SETTLEMENT_APPROVED', 'MEMBER_EXIT', '4', NULL, NULL, '{"membership_status": "ACTIVE"}', '{"new_status": "EXITED", "net_refund_amount": 170000.0, "refund_payment_ref": "EXIT-TEST-SETTLE-001"}', 'Approved exit settlement #4 for WMC-TEST-999. Status: EXITED, Refund: NGN 170,000.00.', '2026-10-18T06:30:51'),
+(271, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '62', NULL, NULL, NULL, '{"purpose": "Working capital facility testing guarantor workflow", "guarantors": [{"name": "Qazeem Adebowale", "member_code": "WMC-2026-001", "guaranteed_amount": 50000.0, "guarantor_member_id": 1}], "product_name": "Ordinary loan (*2 of savings)", "initial_stage": "GUARANTOR_CONSENT", "tenure_months": 3, "loan_reference": "L-WMC-2026-03F9082A", "principal_amount": 50000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-03F9082A for NGN 50,000.00 (3 mos) with 1 guarantor(s).', '2026-10-18T06:32:30'),
+(272, 1, 'Qazeem Adebowale', 'COOPERATOR', 'GUARANTOR_DIGITAL_CONSENT_SIGNED', 'LOAN_GUARANTOR', '21', NULL, NULL, '{"status": "PENDING_CONSENT"}', '{"status": "ACCEPTED", "loan_reference": "L-WMC-2026-03F9082A", "guaranteed_amount": 50000.0, "all_guarantors_consented": true}', 'Cooperator WMC-2026-001 digitally signed guarantee for NGN 50,000.00 on L-WMC-2026-03F9082A.', '2026-10-18T06:32:30'),
+(273, 9999, 'TestExit Cooperator', 'COOPERATOR', 'MEMBER_EXIT_REQUEST_LODGED', 'MEMBER_EXIT', '5', NULL, NULL, '{"membership_status": "ACTIVE"}', '{"exit_id": 5, "exit_type": "VOLUNTARY_WITHDRAWAL", "net_refund": 170000.0, "outstanding_loans": 0.0, "active_guarantor_commitments": 0}', 'Lodge VOLUNTARY_WITHDRAWAL notice for WMC-TEST-999 (Net Liquidation: NGN 170,000.00).', '2026-10-18T06:32:30'),
+(274, 1, 'PRESIDENT', 'PRESIDENT', 'MEMBER_EXIT_SETTLEMENT_APPROVED', 'MEMBER_EXIT', '5', NULL, NULL, '{"membership_status": "ACTIVE"}', '{"new_status": "EXITED", "net_refund_amount": 170000.0, "refund_payment_ref": "EXIT-TEST-SETTLE-001"}', 'Approved exit settlement #5 for WMC-TEST-999. Status: EXITED, Refund: NGN 170,000.00.', '2026-10-18T06:32:30'),
+(275, 1, 'System Administrator', 'SUPER_ADMIN', 'BULK_MEMBERS_IMPORTED', 'MEMBERS', 'BULK_CSV', NULL, NULL, NULL, '{"skipped_count": 0, "imported_count": 1}', 'Bulk imported 1 cooperator(s); skipped 0 row(s).', '2026-10-18T06:32:31'),
+(276, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '63', NULL, NULL, NULL, '{"purpose": "Working capital financing with peer co-signers", "guarantors": [{"name": "Abdul Wasiu Adebowale", "member_code": "WMC-2026-015", "guaranteed_amount": 25000.0, "guarantor_member_id": 15}, {"name": "Amara Ugbana", "member_code": "WMC-2026-009", "guaranteed_amount": 25000.0, "guarantor_member_id": 14}], "product_name": "Ordinary loan (*2 of savings)", "tenure_months": 6, "loan_reference": "L-WMC-2026-F0C66457", "principal_amount": 50000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-F0C66457 for NGN 50,000.00 (6 mos) with 2 guarantor(s).', '2026-10-18T06:33:13'),
+(277, 1, 'Qazeem Adebowale', 'PRESIDENT', 'PRESIDENTIAL_OVERRIDE', 'LOAN', '63', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Presidential Override: 100% disbursed on loan L-WMC-2026-F0C66457.', '2026-10-18T06:33:13'),
+(278, 1, 'Finance Desk', 'FINANCIAL_SECRETARY', 'JOURNAL_ENTRY_POSTED', 'JOURNAL_ENTRY', 'JE-20261018-ED8DACEB', NULL, NULL, NULL, '{"id": 102, "status": "POSTED", "narration": "Balanced test journal entry", "entry_date": "2026-10-18", "is_balanced": true, "lines_count": 2, "total_debit": 25000.0, "entry_number": "JE-20261018-ED8DACEB", "total_credit": 25000.0, "source_module": "MANUAL_JOURNAL", "source_reference": "TEST-BAL-1792303095"}', 'Journal entry JE-20261018-ED8DACEB (POSTED) recorded: NGN 25,000.00.', '2026-10-18T06:58:15'),
+(279, 2, 'Finance Desk', 'FINANCIAL_SECRETARY', 'JOURNAL_ENTRY_DRAFTED', 'JOURNAL_ENTRY', 'JE-20261018-8C66B73D', NULL, NULL, NULL, '{"id": 103, "status": "DRAFT", "narration": "Monthly Cloud Database Hosting & Maintenance Invoice", "entry_date": "2026-10-18", "is_balanced": true, "lines_count": 2, "total_debit": 15000.0, "entry_number": "JE-20261018-8C66B73D", "total_credit": 15000.0, "source_module": "MANUAL_JOURNAL", "source_reference": "MAN-DRAFT-DBA37D"}', 'Journal entry JE-20261018-8C66B73D (DRAFT) recorded: NGN 15,000.00.', '2026-10-18T06:58:15'),
+(280, 1, 'PRESIDENT', 'PRESIDENT', 'JOURNAL_ENTRY_POSTED', 'JOURNAL_ENTRY', 'JE-20261018-8C66B73D', NULL, NULL, '{"status": "DRAFT"}', '{"status": "POSTED", "approved_by": 1}', 'Journal entry JE-20261018-8C66B73D was POSTED by PRESIDENT.', '2026-10-18T06:58:15'),
+(281, 1, 'Finance Desk', 'FINANCIAL_SECRETARY', 'DIVIDEND_PERIOD_SIMULATED', 'DIVIDEND_PERIOD', '1', NULL, NULL, NULL, '{"net_surplus": 500000.0, "period_name": "FY2026 Official Dividend Run"}', 'Created dividend distribution draft #1 (FY2026 Official Dividend Run) for audit review.', '2026-10-18T06:58:15'),
+(282, 1, 'PRESIDENT', 'PRESIDENT', 'DIVIDEND_DISTRIBUTION_POSTED', 'DIVIDEND_PERIOD', '1', NULL, NULL, '{"status": "AUDIT_REVIEW"}', '{"status": "APPROVED_POSTED", "tot_bank_payouts": 0.0, "statutory_reserve": 250000.0, "tot_savings_credits": 249999.98}', 'Approved & posted annual dividend #1. Savings Credited: NGN 249,999.98, Bank Payouts: NGN 0.00.', '2026-10-18T06:58:15'),
+(283, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '65', NULL, NULL, NULL, '{"purpose": "Working capital facility testing guarantor workflow", "guarantors": [{"name": "Qazeem Adebowale", "member_code": "WMC-2026-001", "guaranteed_amount": 50000.0, "guarantor_member_id": 1}], "product_name": "Ordinary loan (*2 of savings)", "initial_stage": "GUARANTOR_CONSENT", "tenure_months": 3, "loan_reference": "L-WMC-2026-B87102B4", "principal_amount": 50000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-B87102B4 for NGN 50,000.00 (3 mos) with 1 guarantor(s).', '2026-10-18T06:58:27'),
+(284, 1, 'Qazeem Adebowale', 'COOPERATOR', 'GUARANTOR_DIGITAL_CONSENT_SIGNED', 'LOAN_GUARANTOR', '24', NULL, NULL, '{"status": "PENDING_CONSENT"}', '{"status": "ACCEPTED", "loan_reference": "L-WMC-2026-B87102B4", "guaranteed_amount": 50000.0, "all_guarantors_consented": true}', 'Cooperator WMC-2026-001 digitally signed guarantee for NGN 50,000.00 on L-WMC-2026-B87102B4.', '2026-10-18T06:58:27'),
+(285, 9999, 'TestExit Cooperator', 'COOPERATOR', 'MEMBER_EXIT_REQUEST_LODGED', 'MEMBER_EXIT', '6', NULL, NULL, '{"membership_status": "ACTIVE"}', '{"exit_id": 6, "exit_type": "VOLUNTARY_WITHDRAWAL", "net_refund": 170000.0, "outstanding_loans": 0.0, "active_guarantor_commitments": 0}', 'Lodge VOLUNTARY_WITHDRAWAL notice for WMC-TEST-999 (Net Liquidation: NGN 170,000.00).', '2026-10-18T06:58:27'),
+(286, 1, 'PRESIDENT', 'PRESIDENT', 'MEMBER_EXIT_SETTLEMENT_APPROVED', 'MEMBER_EXIT', '6', NULL, NULL, '{"membership_status": "ACTIVE"}', '{"new_status": "EXITED", "net_refund_amount": 170000.0, "refund_payment_ref": "EXIT-TEST-SETTLE-001"}', 'Approved exit settlement #6 for WMC-TEST-999. Status: EXITED, Refund: NGN 170,000.00.', '2026-10-18T06:58:27'),
+(287, 1, 'System Administrator', 'SUPER_ADMIN', 'BULK_MEMBERS_IMPORTED', 'MEMBERS', 'BULK_CSV', NULL, NULL, NULL, '{"skipped_count": 0, "imported_count": 1}', 'Bulk imported 1 cooperator(s); skipped 0 row(s).', '2026-10-18T06:58:27'),
+(288, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '66', NULL, NULL, NULL, '{"purpose": "Working capital financing with peer co-signers", "guarantors": [{"name": "Abdul Wasiu Adebowale", "member_code": "WMC-2026-015", "guaranteed_amount": 25000.0, "guarantor_member_id": 15}, {"name": "Amara Ugbana", "member_code": "WMC-2026-009", "guaranteed_amount": 25000.0, "guarantor_member_id": 14}], "product_name": "Ordinary loan (*2 of savings)", "initial_stage": "GUARANTOR_CONSENT", "tenure_months": 6, "loan_reference": "L-WMC-2026-73031A15", "principal_amount": 50000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-73031A15 for NGN 50,000.00 (6 mos) with 2 guarantor(s).', '2026-10-18T06:58:33'),
+(289, 1, 'Qazeem Adebowale', 'PRESIDENT', 'PRESIDENTIAL_OVERRIDE', 'LOAN', '66', NULL, NULL, '{"stage": "GUARANTOR_CONSENT", "percent": 0}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Presidential Override: 100% disbursed on loan L-WMC-2026-73031A15.', '2026-10-18T06:58:33'),
+(290, 1, 'Finance Desk', 'FINANCIAL_SECRETARY', 'JOURNAL_ENTRY_POSTED', 'JOURNAL_ENTRY', 'JE-20261018-15E26E2C', NULL, NULL, NULL, '{"id": 115, "status": "POSTED", "narration": "Balanced test journal entry", "entry_date": "2026-10-18", "is_balanced": true, "lines_count": 2, "total_debit": 25000.0, "entry_number": "JE-20261018-15E26E2C", "total_credit": 25000.0, "source_module": "MANUAL_JOURNAL", "source_reference": "TEST-BAL-1792304081"}', 'Journal entry JE-20261018-15E26E2C (POSTED) recorded: NGN 25,000.00.', '2026-10-18T07:14:41'),
+(291, 2, 'Finance Desk', 'FINANCIAL_SECRETARY', 'JOURNAL_ENTRY_DRAFTED', 'JOURNAL_ENTRY', 'JE-20261018-FD0532E8', NULL, NULL, NULL, '{"id": 116, "status": "DRAFT", "narration": "Monthly Cloud Database Hosting & Maintenance Invoice", "entry_date": "2026-10-18", "is_balanced": true, "lines_count": 2, "total_debit": 15000.0, "entry_number": "JE-20261018-FD0532E8", "total_credit": 15000.0, "source_module": "MANUAL_JOURNAL", "source_reference": "MAN-DRAFT-80E3D9"}', 'Journal entry JE-20261018-FD0532E8 (DRAFT) recorded: NGN 15,000.00.', '2026-10-18T07:14:42'),
+(292, 1, 'PRESIDENT', 'PRESIDENT', 'JOURNAL_ENTRY_POSTED', 'JOURNAL_ENTRY', 'JE-20261018-FD0532E8', NULL, NULL, '{"status": "DRAFT"}', '{"status": "POSTED", "approved_by": 1}', 'Journal entry JE-20261018-FD0532E8 was POSTED by PRESIDENT.', '2026-10-18T07:14:42'),
+(293, 1, 'Finance Desk', 'FINANCIAL_SECRETARY', 'DIVIDEND_PERIOD_SIMULATED', 'DIVIDEND_PERIOD', '2', NULL, NULL, NULL, '{"net_surplus": 500000.0, "period_name": "FY2026 Official Dividend Run"}', 'Created dividend distribution draft #2 (FY2026 Official Dividend Run) for audit review.', '2026-10-18T07:14:42'),
+(294, 1, 'PRESIDENT', 'PRESIDENT', 'DIVIDEND_DISTRIBUTION_POSTED', 'DIVIDEND_PERIOD', '2', NULL, NULL, '{"status": "AUDIT_REVIEW"}', '{"status": "APPROVED_POSTED", "tot_bank_payouts": 0.0, "statutory_reserve": 250000.0, "tot_savings_credits": 249999.99}', 'Approved & posted annual dividend #2. Savings Credited: NGN 249,999.99, Bank Payouts: NGN 0.00.', '2026-10-18T07:14:42'),
+(295, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_CREATED', 'ROLE', '42', NULL, NULL, NULL, '{"role_code": "ROLE_TEST_1792304125", "role_name": "Credit Risk Inspector 1792304125", "permissions": ["apply_loan", "credit_committee_approval", "system_audit"]}', 'Created custom role ROLE_TEST_1792304125 with 3 permissions.', '2026-10-18T07:15:25'),
+(296, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_ASSIGNED', 'MEMBER_ROLE', '2:42', NULL, NULL, NULL, '{"member_id": 2, "role_code": "ROLE_TEST_1792304125", "member_code": "WMC-2026-002"}', 'Assigned role Credit Risk Inspector 1792304125 (ROLE_TEST_1792304125) to member WMC-2026-002.', '2026-10-18T07:15:25'),
+(297, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_REVOKED', 'MEMBER_ROLE', '2:42', NULL, NULL, '{"role_id": 42, "member_id": 2}', NULL, 'Revoked role ID 42 from member ID 2.', '2026-10-18T07:15:25'),
+(298, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '68', NULL, NULL, NULL, '{"purpose": "Professional Equipment Acquisition", "guarantors": [], "product_name": "Ordinary loan (*2 of savings)", "initial_stage": "CREDIT_COMMITTEE", "tenure_months": 6, "loan_reference": "L-WMC-2026-BF61E7B5", "principal_amount": 60000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-BF61E7B5 for NGN 60,000.00 (6 mos) with 0 guarantor(s).', '2026-10-18T07:15:25'),
+(299, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '68', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "FINANCIAL_SECRETARY", "status": "PENDING", "percent": 33}', 'Approved to 33% on loan L-WMC-2026-BF61E7B5.', '2026-10-18T07:15:25'),
+(300, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '68', NULL, NULL, '{"stage": "FINANCIAL_SECRETARY", "percent": 33}', '{"stage": "TREASURER", "status": "PENDING", "percent": 66}', 'Approved to 66% on loan L-WMC-2026-BF61E7B5.', '2026-10-18T07:15:25')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.audit_logs (id, user_id, actor_name, actor_role, action, resource_type, resource_id, ip_address, user_agent, details_before, details_after, summary, created_at) VALUES
+(301, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '68', NULL, NULL, '{"stage": "TREASURER", "percent": 66}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Approved to 100% on loan L-WMC-2026-BF61E7B5.', '2026-10-18T07:15:25'),
+(302, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '69', NULL, NULL, NULL, '{"purpose": "Medical Emergency Financing", "guarantors": [], "product_name": "Ordinary loan (*2 of savings)", "initial_stage": "CREDIT_COMMITTEE", "tenure_months": 4, "loan_reference": "L-WMC-2026-378B202E", "principal_amount": 50000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-378B202E for NGN 50,000.00 (4 mos) with 0 guarantor(s).', '2026-10-18T07:15:25'),
+(303, 1, 'Qazeem Adebowale', 'PRESIDENT', 'PRESIDENTIAL_OVERRIDE', 'LOAN', '69', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Presidential Override: 100% disbursed on loan L-WMC-2026-378B202E.', '2026-10-18T07:15:25'),
+(304, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '70', NULL, NULL, NULL, '{"purpose": "Commercial Venture Capital", "guarantors": [], "product_name": "Ordinary loan (*2 of savings)", "initial_stage": "CREDIT_COMMITTEE", "tenure_months": 6, "loan_reference": "L-WMC-2026-FE09F811", "principal_amount": 35000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-FE09F811 for NGN 35,000.00 (6 mos) with 0 guarantor(s).', '2026-10-18T07:15:25'),
+(305, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_DECLINED', 'LOAN', '70', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "status": "PENDING"}', '{"status": "DECLINED", "decline_reason": "Requested amount exceeds 2x unencumbered savings cap."}', 'Declined loan L-WMC-2026-FE09F811. Reason: Requested amount exceeds 2x unencumbered savings cap.', '2026-10-18T07:15:25'),
+(306, 2, 'Member', 'MEMBER', 'LOAN_APPEAL_SUBMITTED', 'LOAN_APPEAL', '13', NULL, NULL, '{"status": "DECLINED", "loan_id": 70}', '{"status": "UNDER_APPEAL", "loan_id": 70, "appeal_id": 13}', 'Filed appeal #13 against loan decline L-WMC-2026-FE09F811.', '2026-10-18T07:15:25'),
+(307, 1, 'Reviewing Officer', 'PRESIDENT', 'LOAN_APPEAL_RESOLVED', 'LOAN_APPEAL', '13', NULL, NULL, '{"status": "PENDING_REVIEW"}', '{"status": "REINSTATE", "response": "Supplementary proof verified. Approved under presidential arbitration."}', 'Resolved appeal #13: REINSTATE.', '2026-10-18T07:15:25'),
+(308, 2, 'Olaleke Olaoye', 'MEMBER', 'MANUAL_PAYMENT_LOGGED', 'MANUAL_PAYMENT', '13', NULL, NULL, NULL, '{"date": "2026-10-17", "amount": 25000.0, "receipt": "/uploads/receipts/polaris_teller_0099.jpg", "reference": "POLARIS-DEP-1792304125"}', 'Logged Polaris Bank transfer of NGN 25,000.00 (Ref: POLARIS-DEP-1792304125).', '2026-10-18T07:15:25'),
+(309, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_CREATED', 'ROLE', '43', NULL, NULL, NULL, '{"role_code": "ROLE_TEST_1792304414", "role_name": "Credit Risk Inspector 1792304414", "permissions": ["apply_loan", "credit_committee_approval", "system_audit"]}', 'Created custom role ROLE_TEST_1792304414 with 3 permissions.', '2026-10-18T07:20:14'),
+(310, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_ASSIGNED', 'MEMBER_ROLE', '2:43', NULL, NULL, NULL, '{"member_id": 2, "role_code": "ROLE_TEST_1792304414", "member_code": "WMC-2026-002"}', 'Assigned role Credit Risk Inspector 1792304414 (ROLE_TEST_1792304414) to member WMC-2026-002.', '2026-10-18T07:20:14'),
+(311, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_REVOKED', 'MEMBER_ROLE', '2:43', NULL, NULL, '{"role_id": 43, "member_id": 2}', NULL, 'Revoked role ID 43 from member ID 2.', '2026-10-18T07:20:14'),
+(312, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '71', NULL, NULL, NULL, '{"purpose": "Professional Equipment Acquisition", "guarantors": [], "product_name": "Ordinary loan (*2 of savings)", "initial_stage": "CREDIT_COMMITTEE", "tenure_months": 6, "loan_reference": "L-WMC-2026-661009D9", "principal_amount": 60000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-661009D9 for NGN 60,000.00 (6 mos) with 0 guarantor(s).', '2026-10-18T07:20:14'),
+(313, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '71', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "FINANCIAL_SECRETARY", "status": "PENDING", "percent": 33}', 'Approved to 33% on loan L-WMC-2026-661009D9.', '2026-10-18T07:20:14'),
+(314, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '71', NULL, NULL, '{"stage": "FINANCIAL_SECRETARY", "percent": 33}', '{"stage": "TREASURER", "status": "PENDING", "percent": 66}', 'Approved to 66% on loan L-WMC-2026-661009D9.', '2026-10-18T07:20:14'),
+(315, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '71', NULL, NULL, '{"stage": "TREASURER", "percent": 66}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Approved to 100% on loan L-WMC-2026-661009D9.', '2026-10-18T07:20:14'),
+(316, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '72', NULL, NULL, NULL, '{"purpose": "Medical Emergency Financing", "guarantors": [], "product_name": "Ordinary loan (*2 of savings)", "initial_stage": "CREDIT_COMMITTEE", "tenure_months": 4, "loan_reference": "L-WMC-2026-D682DCB3", "principal_amount": 50000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-D682DCB3 for NGN 50,000.00 (4 mos) with 0 guarantor(s).', '2026-10-18T07:20:14'),
+(317, 1, 'Qazeem Adebowale', 'PRESIDENT', 'PRESIDENTIAL_OVERRIDE', 'LOAN', '72', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Presidential Override: 100% disbursed on loan L-WMC-2026-D682DCB3.', '2026-10-18T07:20:14'),
+(318, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '73', NULL, NULL, NULL, '{"purpose": "Commercial Venture Capital", "guarantors": [], "product_name": "Ordinary loan (*2 of savings)", "initial_stage": "CREDIT_COMMITTEE", "tenure_months": 6, "loan_reference": "L-WMC-2026-7F8EAF05", "principal_amount": 35000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-7F8EAF05 for NGN 35,000.00 (6 mos) with 0 guarantor(s).', '2026-10-18T07:20:14'),
+(319, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_DECLINED', 'LOAN', '73', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "status": "PENDING"}', '{"status": "DECLINED", "decline_reason": "Requested amount exceeds 2x unencumbered savings cap."}', 'Declined loan L-WMC-2026-7F8EAF05. Reason: Requested amount exceeds 2x unencumbered savings cap.', '2026-10-18T07:20:14'),
+(320, 2, 'Member', 'MEMBER', 'LOAN_APPEAL_SUBMITTED', 'LOAN_APPEAL', '14', NULL, NULL, '{"status": "DECLINED", "loan_id": 73}', '{"status": "UNDER_APPEAL", "loan_id": 73, "appeal_id": 14}', 'Filed appeal #14 against loan decline L-WMC-2026-7F8EAF05.', '2026-10-18T07:20:14'),
+(321, 1, 'Reviewing Officer', 'PRESIDENT', 'LOAN_APPEAL_RESOLVED', 'LOAN_APPEAL', '14', NULL, NULL, '{"status": "PENDING_REVIEW"}', '{"status": "REINSTATE", "response": "Supplementary proof verified. Approved under presidential arbitration."}', 'Resolved appeal #14: REINSTATE.', '2026-10-18T07:20:14'),
+(322, 2, 'Olaleke Olaoye', 'MEMBER', 'MANUAL_PAYMENT_LOGGED', 'MANUAL_PAYMENT', '14', NULL, NULL, NULL, '{"date": "2026-10-17", "amount": 25000.0, "receipt": "/uploads/receipts/polaris_teller_0099.jpg", "reference": "POLARIS-DEP-1792304414"}', 'Logged Polaris Bank transfer of NGN 25,000.00 (Ref: POLARIS-DEP-1792304414).', '2026-10-18T07:20:14'),
+(323, 1, 'Treasury Officer', 'PRESIDENT', 'MANUAL_PAYMENT_VERIFIED', 'MANUAL_PAYMENT', '14', NULL, NULL, '{"status": "PENDING_RECONCILIATION"}', '{"status": "VERIFIED", "distribution": {"status": "SUCCESS", "message": "Successfully auto-distributed NGN 25,000.00 according to Payment Advice #WMC-ADV-202610-0002.", "advice_id": 2, "allocations": {"fines": 0.0, "welfare": 0.0, "share_capital": 0.0, "loan_repayment": 0.0, "target_savings": 0.0, "regular_savings": 0.0, "registration_fee": 0.0, "surplus_regular_savings": 25000.0}, "advice_status": "FULLY_SETTLED", "amount_received": 25000.0, "advice_reference": "WMC-ADV-202610-0002", "payment_reference": "POLARIS-DEP-1792304414", "outstanding_balance": 0.0, "surplus_credited_to_savings": 25000.0, "total_obligations_satisfied": 0.0}}', 'Verified Polaris payment #14 for NGN 25,000.00 (Ref: POLARIS-DEP-1792304414).', '2026-10-18T07:20:15'),
+(324, 1, 'Executive Officer', 'PRESIDENT', 'DIRECT_MEMBER_CREDIT', 'MEMBER_ACCOUNT', '2', NULL, NULL, NULL, '{"amount": 10000.0, "category": "SAVINGS", "narration": "Statutory incentive dividend allocation authorized by Board"}', 'Direct credit of NGN 10,000.00 (SAVINGS) to WMC-2026-002.', '2026-10-18T07:20:15'),
+(325, 1, 'Executive Officer', 'PRESIDENT', 'PAYMENT_ADVICE_MODIFIED', 'PAYMENT_ADVICE', '1', NULL, NULL, '{"loan": 0.0, "fines": 0.0, "shares": 3000.0, "arrears": 0.0, "savings": 22000.0, "targets": 0.0, "welfare": 1000.0, "total_expected": 31000.0, "registration_fee": 5000.0}', '{"loan": 0.0, "fines": 0.0, "shares": 3000.0, "arrears": 0.0, "savings": 22000.0, "targets": 0.0, "welfare": 1000.0, "total_expected": 31000.0, "registration_fee": 5000.0}', 'Modified advice #1 (THIS_MONTH_ONLY). Justification: Cooperator requested temporary voluntary increase in share equity per SOP', '2026-10-18T07:20:15'),
+(326, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '74', NULL, NULL, NULL, '{"purpose": "Working capital financing with peer co-signers", "guarantors": [{"name": "Abdul Wasiu Adebowale", "member_code": "WMC-2026-015", "guaranteed_amount": 25000.0, "guarantor_member_id": 15}, {"name": "Amara Ugbana", "member_code": "WMC-2026-009", "guaranteed_amount": 25000.0, "guarantor_member_id": 14}], "product_name": "Ordinary loan (*2 of savings)", "initial_stage": "GUARANTOR_CONSENT", "tenure_months": 6, "loan_reference": "L-WMC-2026-143C4A29", "principal_amount": 50000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-143C4A29 for NGN 50,000.00 (6 mos) with 2 guarantor(s).', '2026-10-18T07:20:41'),
+(327, 1, 'Qazeem Adebowale', 'PRESIDENT', 'PRESIDENTIAL_OVERRIDE', 'LOAN', '74', NULL, NULL, '{"stage": "GUARANTOR_CONSENT", "percent": 0}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Presidential Override: 100% disbursed on loan L-WMC-2026-143C4A29.', '2026-10-18T07:20:41'),
+(328, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '76', NULL, NULL, NULL, '{"purpose": "Working capital facility testing guarantor workflow", "guarantors": [{"name": "Qazeem Adebowale", "member_code": "WMC-2026-001", "guaranteed_amount": 50000.0, "guarantor_member_id": 1}], "product_name": "Ordinary loan (*2 of savings)", "initial_stage": "GUARANTOR_CONSENT", "tenure_months": 3, "loan_reference": "L-WMC-2026-553AB4D4", "principal_amount": 50000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-553AB4D4 for NGN 50,000.00 (3 mos) with 1 guarantor(s).', '2026-10-18T07:20:53'),
+(329, 1, 'Qazeem Adebowale', 'COOPERATOR', 'GUARANTOR_DIGITAL_CONSENT_SIGNED', 'LOAN_GUARANTOR', '29', NULL, NULL, '{"status": "PENDING_CONSENT"}', '{"status": "ACCEPTED", "loan_reference": "L-WMC-2026-553AB4D4", "guaranteed_amount": 50000.0, "all_guarantors_consented": true}', 'Cooperator WMC-2026-001 digitally signed guarantee for NGN 50,000.00 on L-WMC-2026-553AB4D4.', '2026-10-18T07:20:53'),
+(330, 9999, 'TestExit Cooperator', 'COOPERATOR', 'MEMBER_EXIT_REQUEST_LODGED', 'MEMBER_EXIT', '7', NULL, NULL, '{"membership_status": "ACTIVE"}', '{"exit_id": 7, "exit_type": "VOLUNTARY_WITHDRAWAL", "net_refund": 170000.0, "outstanding_loans": 0.0, "active_guarantor_commitments": 0}', 'Lodge VOLUNTARY_WITHDRAWAL notice for WMC-TEST-999 (Net Liquidation: NGN 170,000.00).', '2026-10-18T07:20:53'),
+(331, 1, 'PRESIDENT', 'PRESIDENT', 'MEMBER_EXIT_SETTLEMENT_APPROVED', 'MEMBER_EXIT', '7', NULL, NULL, '{"membership_status": "ACTIVE"}', '{"new_status": "EXITED", "net_refund_amount": 170000.0, "refund_payment_ref": "EXIT-TEST-SETTLE-001"}', 'Approved exit settlement #7 for WMC-TEST-999. Status: EXITED, Refund: NGN 170,000.00.', '2026-10-18T07:20:53'),
+(332, 1, 'System Administrator', 'SUPER_ADMIN', 'BULK_MEMBERS_IMPORTED', 'MEMBERS', 'BULK_CSV', NULL, NULL, NULL, '{"skipped_count": 0, "imported_count": 1}', 'Bulk imported 1 cooperator(s); skipped 0 row(s).', '2026-10-18T07:20:53'),
+(333, 1, 'Finance Desk', 'FINANCIAL_SECRETARY', 'JOURNAL_ENTRY_POSTED', 'JOURNAL_ENTRY', 'JE-20261018-683412F7', NULL, NULL, NULL, '{"id": 137, "status": "POSTED", "narration": "Balanced test journal entry", "entry_date": "2026-10-18", "is_balanced": true, "lines_count": 2, "total_debit": 25000.0, "entry_number": "JE-20261018-683412F7", "total_credit": 25000.0, "source_module": "MANUAL_JOURNAL", "source_reference": "TEST-BAL-1792304460"}', 'Journal entry JE-20261018-683412F7 (POSTED) recorded: NGN 25,000.00.', '2026-10-18T07:21:00'),
+(334, 2, 'Finance Desk', 'FINANCIAL_SECRETARY', 'JOURNAL_ENTRY_DRAFTED', 'JOURNAL_ENTRY', 'JE-20261018-2DF56437', NULL, NULL, NULL, '{"id": 138, "status": "DRAFT", "narration": "Monthly Cloud Database Hosting & Maintenance Invoice", "entry_date": "2026-10-18", "is_balanced": true, "lines_count": 2, "total_debit": 15000.0, "entry_number": "JE-20261018-2DF56437", "total_credit": 15000.0, "source_module": "MANUAL_JOURNAL", "source_reference": "MAN-DRAFT-732304"}', 'Journal entry JE-20261018-2DF56437 (DRAFT) recorded: NGN 15,000.00.', '2026-10-18T07:21:00'),
+(335, 1, 'PRESIDENT', 'PRESIDENT', 'JOURNAL_ENTRY_POSTED', 'JOURNAL_ENTRY', 'JE-20261018-2DF56437', NULL, NULL, '{"status": "DRAFT"}', '{"status": "POSTED", "approved_by": 1}', 'Journal entry JE-20261018-2DF56437 was POSTED by PRESIDENT.', '2026-10-18T07:21:00'),
+(336, 1, 'Finance Desk', 'FINANCIAL_SECRETARY', 'DIVIDEND_PERIOD_SIMULATED', 'DIVIDEND_PERIOD', '3', NULL, NULL, NULL, '{"net_surplus": 500000.0, "period_name": "FY2026 Official Dividend Run"}', 'Created dividend distribution draft #3 (FY2026 Official Dividend Run) for audit review.', '2026-10-18T07:21:00'),
+(337, 1, 'PRESIDENT', 'PRESIDENT', 'DIVIDEND_DISTRIBUTION_POSTED', 'DIVIDEND_PERIOD', '3', NULL, NULL, '{"status": "AUDIT_REVIEW"}', '{"status": "APPROVED_POSTED", "tot_bank_payouts": 0.0, "statutory_reserve": 250000.0, "tot_savings_credits": 250000.0}', 'Approved & posted annual dividend #3. Savings Credited: NGN 250,000.00, Bank Payouts: NGN 0.00.', '2026-10-18T07:21:00'),
+(338, 2, 'Olaleke Olaoye', 'COOPERATOR', 'MEMBER_EXIT_REQUEST_LODGED', 'MEMBER_EXIT', '8', NULL, NULL, '{"membership_status": "ACTIVE"}', '{"exit_id": 8, "exit_type": "VOLUNTARY_WITHDRAWAL", "net_refund": -2606904.7, "outstanding_loans": 3514875.0, "active_guarantor_commitments": 0}', 'Lodge VOLUNTARY_WITHDRAWAL notice for WMC-2026-002 (Net Liquidation: NGN -2,606,904.70).', '2026-10-18T07:55:34'),
+(339, 10006, 'Compliance Engine', 'SYSTEM', 'MEMBER_AUTO_SUSPENDED_FOR_ARREARS', 'MEMBER', '10006', NULL, NULL, '{"membership_status": "ACTIVE"}', '{"membership_status": "SUSPENDED", "unpaid_advices_count": 4}', 'Automated suspension applied to cooperator WMC-TEST-ARR due to 4 consecutive unremitted billing periods.', '2026-10-18T07:55:34'),
+(340, 2, 'Olaleke Olaoye', 'COOPERATOR', 'MEMBER_EXIT_REQUEST_LODGED', 'MEMBER_EXIT', '9', NULL, NULL, '{"membership_status": "ACTIVE"}', '{"exit_id": 9, "exit_type": "VOLUNTARY_WITHDRAWAL", "net_refund": -2586904.7, "outstanding_loans": 3464875.0, "active_guarantor_commitments": 0}', 'Lodge VOLUNTARY_WITHDRAWAL notice for WMC-2026-002 (Net Liquidation: NGN -2,586,904.70).', '2026-10-18T07:56:33'),
+(341, 10007, 'Compliance Engine', 'SYSTEM', 'MEMBER_AUTO_SUSPENDED_FOR_ARREARS', 'MEMBER', '10007', NULL, NULL, '{"membership_status": "ACTIVE"}', '{"membership_status": "SUSPENDED", "unpaid_advices_count": 4}', 'Automated suspension applied to cooperator WMC-TEST-ARR due to 4 consecutive unremitted billing periods.', '2026-10-18T07:56:33'),
+(342, 1, 'Executive Desk', 'FINSEC_PRESIDENT', 'LOAN_FORECLOSURE_EXECUTED', 'LOAN', '76', NULL, NULL, '{"outstanding_balance": 80000.0}', '{"notes": "Statutory 90-day uncured default resolution approved by FinSec & President", "new_status": "ACTIVE", "total_offset": 50000.0, "borrower_offset": 30000.0, "guarantor_offset": 20000.0, "new_outstanding_balance": 30000.0}', 'Executed statutory foreclosure offset of NGN 50,000.00 on L-WMC-2026-553AB4D4.', '2026-10-18T07:56:34'),
+(343, 2, 'Olaleke Olaoye', 'COOPERATOR', 'MEMBER_EXIT_REQUEST_LODGED', 'MEMBER_EXIT', '10', NULL, NULL, '{"membership_status": "ACTIVE"}', '{"exit_id": 10, "exit_type": "VOLUNTARY_WITHDRAWAL", "net_refund": -2616904.7, "outstanding_loans": 3464875.0, "active_guarantor_commitments": 0}', 'Lodge VOLUNTARY_WITHDRAWAL notice for WMC-2026-002 (Net Liquidation: NGN -2,616,904.70).', '2026-10-18T07:56:54'),
+(344, 10008, 'Compliance Engine', 'SYSTEM', 'MEMBER_AUTO_SUSPENDED_FOR_ARREARS', 'MEMBER', '10008', NULL, NULL, '{"membership_status": "ACTIVE"}', '{"membership_status": "SUSPENDED", "unpaid_advices_count": 4}', 'Automated suspension applied to cooperator WMC-TEST-ARR due to 4 consecutive unremitted billing periods.', '2026-10-18T07:56:54'),
+(345, 1, 'Executive Desk', 'FINSEC_PRESIDENT', 'LOAN_FORECLOSURE_EXECUTED', 'LOAN', '76', NULL, NULL, '{"outstanding_balance": 80000.0}', '{"notes": "Statutory 90-day uncured default resolution approved by FinSec & President", "new_status": "ACTIVE", "total_offset": 50000.0, "borrower_offset": 30000.0, "guarantor_offset": 20000.0, "new_outstanding_balance": 30000.0}', 'Executed statutory foreclosure offset of NGN 50,000.00 on L-WMC-2026-553AB4D4.', '2026-10-18T07:56:55'),
+(346, 2, 'Olaleke Olaoye', 'COOPERATOR', 'MEMBER_EXIT_REQUEST_LODGED', 'MEMBER_EXIT', '11', NULL, NULL, '{"membership_status": "ACTIVE"}', '{"exit_id": 11, "exit_type": "VOLUNTARY_WITHDRAWAL", "net_refund": -2646904.7, "outstanding_loans": 3464875.0, "active_guarantor_commitments": 0}', 'Lodge VOLUNTARY_WITHDRAWAL notice for WMC-2026-002 (Net Liquidation: NGN -2,646,904.70).', '2026-10-18T07:57:45'),
+(347, 10009, 'Compliance Engine', 'SYSTEM', 'MEMBER_AUTO_SUSPENDED_FOR_ARREARS', 'MEMBER', '10009', NULL, NULL, '{"membership_status": "ACTIVE"}', '{"membership_status": "SUSPENDED", "unpaid_advices_count": 4}', 'Automated suspension applied to cooperator WMC-TEST-ARR due to 4 consecutive unremitted billing periods.', '2026-10-18T07:57:45'),
+(348, 1, 'Executive Desk', 'FINSEC_PRESIDENT', 'LOAN_FORECLOSURE_EXECUTED', 'LOAN', '76', NULL, NULL, '{"outstanding_balance": 80000.0}', '{"notes": "Statutory 90-day uncured default resolution approved by FinSec & President", "new_status": "ACTIVE", "total_offset": 50000.0, "borrower_offset": 30000.0, "guarantor_offset": 20000.0, "new_outstanding_balance": 30000.0}', 'Executed statutory foreclosure offset of NGN 50,000.00 on L-WMC-2026-553AB4D4.', '2026-10-18T07:57:46'),
+(349, 1, 'Finance Desk', 'FINANCIAL_SECRETARY', 'JOURNAL_ENTRY_POSTED', 'JOURNAL_ENTRY', 'JE-20261018-826C18E3', NULL, NULL, NULL, '{"id": 160, "status": "POSTED", "narration": "Balanced test journal entry", "entry_date": "2026-10-18", "is_balanced": true, "lines_count": 2, "total_debit": 25000.0, "entry_number": "JE-20261018-826C18E3", "total_credit": 25000.0, "source_module": "MANUAL_JOURNAL", "source_reference": "TEST-BAL-1792306682"}', 'Journal entry JE-20261018-826C18E3 (POSTED) recorded: NGN 25,000.00.', '2026-10-18T07:58:03'),
+(350, 2, 'Finance Desk', 'FINANCIAL_SECRETARY', 'JOURNAL_ENTRY_DRAFTED', 'JOURNAL_ENTRY', 'JE-20261018-342607DE', NULL, NULL, NULL, '{"id": 161, "status": "DRAFT", "narration": "Monthly Cloud Database Hosting & Maintenance Invoice", "entry_date": "2026-10-18", "is_balanced": true, "lines_count": 2, "total_debit": 15000.0, "entry_number": "JE-20261018-342607DE", "total_credit": 15000.0, "source_module": "MANUAL_JOURNAL", "source_reference": "MAN-DRAFT-4486F0"}', 'Journal entry JE-20261018-342607DE (DRAFT) recorded: NGN 15,000.00.', '2026-10-18T07:58:03')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.audit_logs (id, user_id, actor_name, actor_role, action, resource_type, resource_id, ip_address, user_agent, details_before, details_after, summary, created_at) VALUES
+(351, 1, 'PRESIDENT', 'PRESIDENT', 'JOURNAL_ENTRY_POSTED', 'JOURNAL_ENTRY', 'JE-20261018-342607DE', NULL, NULL, '{"status": "DRAFT"}', '{"status": "POSTED", "approved_by": 1}', 'Journal entry JE-20261018-342607DE was POSTED by PRESIDENT.', '2026-10-18T07:58:03'),
+(352, 1, 'Finance Desk', 'FINANCIAL_SECRETARY', 'DIVIDEND_PERIOD_SIMULATED', 'DIVIDEND_PERIOD', '4', NULL, NULL, NULL, '{"net_surplus": 500000.0, "period_name": "FY2026 Official Dividend Run"}', 'Created dividend distribution draft #4 (FY2026 Official Dividend Run) for audit review.', '2026-10-18T07:58:03'),
+(353, 1, 'PRESIDENT', 'PRESIDENT', 'DIVIDEND_DISTRIBUTION_POSTED', 'DIVIDEND_PERIOD', '4', NULL, NULL, '{"status": "AUDIT_REVIEW"}', '{"status": "APPROVED_POSTED", "tot_bank_payouts": 0.0, "statutory_reserve": 250000.0, "tot_savings_credits": 249999.98}', 'Approved & posted annual dividend #4. Savings Credited: NGN 249,999.98, Bank Payouts: NGN 0.00.', '2026-10-18T07:58:03'),
+(354, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_CREATED', 'ROLE', '44', NULL, NULL, NULL, '{"role_code": "ROLE_TEST_1792306697", "role_name": "Credit Risk Inspector 1792306697", "permissions": ["apply_loan", "credit_committee_approval", "system_audit"]}', 'Created custom role ROLE_TEST_1792306697 with 3 permissions.', '2026-10-18T07:58:17'),
+(355, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_ASSIGNED', 'MEMBER_ROLE', '2:44', NULL, NULL, NULL, '{"member_id": 2, "role_code": "ROLE_TEST_1792306697", "member_code": "WMC-2026-002"}', 'Assigned role Credit Risk Inspector 1792306697 (ROLE_TEST_1792306697) to member WMC-2026-002.', '2026-10-18T07:58:17'),
+(356, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_REVOKED', 'MEMBER_ROLE', '2:44', NULL, NULL, '{"role_id": 44, "member_id": 2}', NULL, 'Revoked role ID 44 from member ID 2.', '2026-10-18T07:58:17'),
+(357, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '77', NULL, NULL, NULL, '{"purpose": "Professional Equipment Acquisition", "guarantors": [], "product_name": "Ordinary loan (*2 of savings)", "initial_stage": "CREDIT_COMMITTEE", "tenure_months": 6, "loan_reference": "L-WMC-2026-1788CB66", "principal_amount": 60000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-1788CB66 for NGN 60,000.00 (6 mos) with 0 guarantor(s).', '2026-10-18T07:58:17'),
+(358, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '77', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "FINANCIAL_SECRETARY", "status": "PENDING", "percent": 33}', 'Approved to 33% on loan L-WMC-2026-1788CB66.', '2026-10-18T07:58:18'),
+(359, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '77', NULL, NULL, '{"stage": "FINANCIAL_SECRETARY", "percent": 33}', '{"stage": "TREASURER", "status": "PENDING", "percent": 66}', 'Approved to 66% on loan L-WMC-2026-1788CB66.', '2026-10-18T07:58:18'),
+(360, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '77', NULL, NULL, '{"stage": "TREASURER", "percent": 66}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Approved to 100% on loan L-WMC-2026-1788CB66.', '2026-10-18T07:58:18'),
+(361, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '78', NULL, NULL, NULL, '{"purpose": "Medical Emergency Financing", "guarantors": [], "product_name": "Ordinary loan (*2 of savings)", "initial_stage": "CREDIT_COMMITTEE", "tenure_months": 4, "loan_reference": "L-WMC-2026-5ECA7E1D", "principal_amount": 50000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-5ECA7E1D for NGN 50,000.00 (4 mos) with 0 guarantor(s).', '2026-10-18T07:58:18'),
+(362, 1, 'Qazeem Adebowale', 'PRESIDENT', 'PRESIDENTIAL_OVERRIDE', 'LOAN', '78', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Presidential Override: 100% disbursed on loan L-WMC-2026-5ECA7E1D.', '2026-10-18T07:58:18'),
+(363, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '79', NULL, NULL, NULL, '{"purpose": "Commercial Venture Capital", "guarantors": [], "product_name": "Ordinary loan (*2 of savings)", "initial_stage": "CREDIT_COMMITTEE", "tenure_months": 6, "loan_reference": "L-WMC-2026-203D251B", "principal_amount": 35000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-203D251B for NGN 35,000.00 (6 mos) with 0 guarantor(s).', '2026-10-18T07:58:18'),
+(364, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_DECLINED', 'LOAN', '79', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "status": "PENDING"}', '{"status": "DECLINED", "decline_reason": "Requested amount exceeds 2x unencumbered savings cap."}', 'Declined loan L-WMC-2026-203D251B. Reason: Requested amount exceeds 2x unencumbered savings cap.', '2026-10-18T07:58:18'),
+(365, 2, 'Member', 'MEMBER', 'LOAN_APPEAL_SUBMITTED', 'LOAN_APPEAL', '15', NULL, NULL, '{"status": "DECLINED", "loan_id": 79}', '{"status": "UNDER_APPEAL", "loan_id": 79, "appeal_id": 15}', 'Filed appeal #15 against loan decline L-WMC-2026-203D251B.', '2026-10-18T07:58:18'),
+(366, 1, 'Reviewing Officer', 'PRESIDENT', 'LOAN_APPEAL_RESOLVED', 'LOAN_APPEAL', '15', NULL, NULL, '{"status": "PENDING_REVIEW"}', '{"status": "REINSTATE", "response": "Supplementary proof verified. Approved under presidential arbitration."}', 'Resolved appeal #15: REINSTATE.', '2026-10-18T07:58:18'),
+(367, 2, 'Olaleke Olaoye', 'MEMBER', 'MANUAL_PAYMENT_LOGGED', 'MANUAL_PAYMENT', '15', NULL, NULL, NULL, '{"date": "2026-10-17", "amount": 25000.0, "receipt": "/uploads/receipts/polaris_teller_0099.jpg", "reference": "POLARIS-DEP-1792306698"}', 'Logged Polaris Bank transfer of NGN 25,000.00 (Ref: POLARIS-DEP-1792306698).', '2026-10-18T07:58:18'),
+(368, 1, 'Treasury Officer', 'PRESIDENT', 'MANUAL_PAYMENT_VERIFIED', 'MANUAL_PAYMENT', '15', NULL, NULL, '{"status": "PENDING_RECONCILIATION"}', '{"status": "VERIFIED", "distribution": {"status": "SUCCESS", "message": "Successfully auto-distributed NGN 25,000.00 according to Payment Advice #WMC-ADV-202610-0002.", "advice_id": 2, "allocations": {"fines": 0.0, "welfare": 0.0, "share_capital": 0.0, "loan_repayment": 0.0, "target_savings": 0.0, "regular_savings": 0.0, "registration_fee": 0.0, "surplus_regular_savings": 25000.0}, "advice_status": "FULLY_SETTLED", "amount_received": 25000.0, "advice_reference": "WMC-ADV-202610-0002", "payment_reference": "POLARIS-DEP-1792306698", "outstanding_balance": 0.0, "surplus_credited_to_savings": 25000.0, "total_obligations_satisfied": 0.0}}', 'Verified Polaris payment #15 for NGN 25,000.00 (Ref: POLARIS-DEP-1792306698).', '2026-10-18T07:58:18'),
+(369, 1, 'Executive Officer', 'PRESIDENT', 'DIRECT_MEMBER_CREDIT', 'MEMBER_ACCOUNT', '2', NULL, NULL, NULL, '{"amount": 10000.0, "category": "SAVINGS", "narration": "Statutory incentive dividend allocation authorized by Board"}', 'Direct credit of NGN 10,000.00 (SAVINGS) to WMC-2026-002.', '2026-10-18T07:58:18'),
+(370, 1, 'Executive Officer', 'PRESIDENT', 'PAYMENT_ADVICE_MODIFIED', 'PAYMENT_ADVICE', '1', NULL, NULL, '{"loan": 0.0, "fines": 0.0, "shares": 3000.0, "arrears": 0.0, "savings": 22000.0, "targets": 0.0, "welfare": 1000.0, "total_expected": 31000.0, "registration_fee": 5000.0}', '{"loan": 0.0, "fines": 0.0, "shares": 3000.0, "arrears": 0.0, "savings": 22000.0, "targets": 0.0, "welfare": 1000.0, "total_expected": 31000.0, "registration_fee": 5000.0}', 'Modified advice #1 (THIS_MONTH_ONLY). Justification: Cooperator requested temporary voluntary increase in share equity per SOP', '2026-10-18T07:58:19'),
+(371, 10011, 'Compliance Engine', 'SYSTEM', 'MEMBER_AUTO_SUSPENDED_FOR_ARREARS', 'MEMBER', '10011', NULL, NULL, '{"membership_status": "ACTIVE"}', '{"membership_status": "SUSPENDED", "unpaid_advices_count": 3}', 'Automated suspension applied to cooperator WMC-TEST-REG99 due to 3 consecutive unremitted billing periods.', '2026-10-18T07:59:24'),
+(372, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '80', NULL, NULL, NULL, '{"purpose": "Working capital financing with peer co-signers", "guarantors": [{"name": "Abdul Wasiu Adebowale", "member_code": "WMC-2026-015", "guaranteed_amount": 25000.0, "guarantor_member_id": 15}, {"name": "Amara Ugbana", "member_code": "WMC-2026-009", "guaranteed_amount": 25000.0, "guarantor_member_id": 14}], "product_name": "Ordinary loan (*2 of savings)", "initial_stage": "GUARANTOR_CONSENT", "tenure_months": 6, "loan_reference": "L-WMC-2026-8D5FD046", "principal_amount": 50000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-8D5FD046 for NGN 50,000.00 (6 mos) with 2 guarantor(s).', '2026-10-18T07:59:33'),
+(373, 1, 'Qazeem Adebowale', 'PRESIDENT', 'PRESIDENTIAL_OVERRIDE', 'LOAN', '80', NULL, NULL, '{"stage": "GUARANTOR_CONSENT", "percent": 0}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Presidential Override: 100% disbursed on loan L-WMC-2026-8D5FD046.', '2026-10-18T07:59:33'),
+(374, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '82', NULL, NULL, NULL, '{"purpose": "Working capital facility testing guarantor workflow", "guarantors": [{"name": "Qazeem Adebowale", "member_code": "WMC-2026-001", "guaranteed_amount": 50000.0, "guarantor_member_id": 1}], "product_name": "Ordinary loan (*2 of savings)", "initial_stage": "GUARANTOR_CONSENT", "tenure_months": 3, "loan_reference": "L-WMC-2026-9CDA5F1F", "principal_amount": 50000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-9CDA5F1F for NGN 50,000.00 (3 mos) with 1 guarantor(s).', '2026-10-18T07:59:46'),
+(375, 1, 'Qazeem Adebowale', 'COOPERATOR', 'GUARANTOR_DIGITAL_CONSENT_SIGNED', 'LOAN_GUARANTOR', '40', NULL, NULL, '{"status": "PENDING_CONSENT"}', '{"status": "ACCEPTED", "loan_reference": "L-WMC-2026-9CDA5F1F", "guaranteed_amount": 50000.0, "all_guarantors_consented": true}', 'Cooperator WMC-2026-001 digitally signed guarantee for NGN 50,000.00 on L-WMC-2026-9CDA5F1F.', '2026-10-18T07:59:46'),
+(376, 9999, 'TestExit Cooperator', 'COOPERATOR', 'MEMBER_EXIT_REQUEST_LODGED', 'MEMBER_EXIT', '12', NULL, NULL, '{"membership_status": "ACTIVE"}', '{"exit_id": 12, "exit_type": "VOLUNTARY_WITHDRAWAL", "net_refund": 170000.0, "outstanding_loans": 0.0, "active_guarantor_commitments": 0}', 'Lodge VOLUNTARY_WITHDRAWAL notice for WMC-TEST-999 (Net Liquidation: NGN 170,000.00).', '2026-10-18T07:59:46'),
+(377, 1, 'PRESIDENT', 'PRESIDENT', 'MEMBER_EXIT_SETTLEMENT_APPROVED', 'MEMBER_EXIT', '12', NULL, NULL, '{"membership_status": "ACTIVE"}', '{"new_status": "EXITED", "net_refund_amount": 170000.0, "refund_payment_ref": "EXIT-TEST-SETTLE-001"}', 'Approved exit settlement #12 for WMC-TEST-999. Status: EXITED, Refund: NGN 170,000.00.', '2026-10-18T07:59:46'),
+(378, 1, 'System Administrator', 'SUPER_ADMIN', 'BULK_MEMBERS_IMPORTED', 'MEMBERS', 'BULK_CSV', NULL, NULL, NULL, '{"skipped_count": 0, "imported_count": 1}', 'Bulk imported 1 cooperator(s); skipped 0 row(s).', '2026-10-18T07:59:46'),
+(379, 2, 'Olaleke Olaoye', 'COOPERATOR', 'MEMBER_EXIT_REQUEST_LODGED', 'MEMBER_EXIT', '13', NULL, NULL, '{"membership_status": "ACTIVE"}', '{"exit_id": 13, "exit_type": "VOLUNTARY_WITHDRAWAL", "net_refund": -2803801.43, "outstanding_loans": 3695500.0, "active_guarantor_commitments": 0}', 'Lodge VOLUNTARY_WITHDRAWAL notice for WMC-2026-002 (Net Liquidation: NGN -2,803,801.43).', '2026-10-18T07:59:56'),
+(380, 1, 'Executive Desk', 'FINSEC_PRESIDENT', 'LOAN_FORECLOSURE_EXECUTED', 'LOAN', '82', NULL, NULL, '{"outstanding_balance": 80000.0}', '{"notes": "Statutory 90-day uncured default resolution approved by FinSec & President", "new_status": "ACTIVE", "total_offset": 50000.0, "borrower_offset": 30000.0, "guarantor_offset": 20000.0, "new_outstanding_balance": 30000.0}', 'Executed statutory foreclosure offset of NGN 50,000.00 on L-WMC-2026-9CDA5F1F.', '2026-10-18T07:59:57'),
+(381, 2, 'Olaleke Olaoye', 'COOPERATOR', 'MEMBER_EXIT_REQUEST_LODGED', 'MEMBER_EXIT', '14', NULL, NULL, '{"membership_status": "ACTIVE"}', '{"exit_id": 14, "exit_type": "VOLUNTARY_WITHDRAWAL", "net_refund": -2863801.43, "outstanding_loans": 3725500.0, "active_guarantor_commitments": 0}', 'Lodge VOLUNTARY_WITHDRAWAL notice for WMC-2026-002 (Net Liquidation: NGN -2,863,801.43).', '2026-10-18T08:00:17'),
+(382, 10013, 'Compliance Engine', 'SYSTEM', 'MEMBER_AUTO_SUSPENDED_FOR_ARREARS', 'MEMBER', '10013', NULL, NULL, '{"membership_status": "ACTIVE"}', '{"membership_status": "SUSPENDED", "unpaid_advices_count": 4}', 'Automated suspension applied to cooperator WMC-TEST-ARR due to 4 consecutive unremitted billing periods.', '2026-10-18T08:00:17'),
+(383, 1, 'Executive Desk', 'FINSEC_PRESIDENT', 'LOAN_FORECLOSURE_EXECUTED', 'LOAN', '82', NULL, NULL, '{"outstanding_balance": 80000.0}', '{"notes": "Statutory 90-day uncured default resolution approved by FinSec & President", "new_status": "ACTIVE", "total_offset": 50000.0, "borrower_offset": 30000.0, "guarantor_offset": 20000.0, "new_outstanding_balance": 30000.0}', 'Executed statutory foreclosure offset of NGN 50,000.00 on L-WMC-2026-9CDA5F1F.', '2026-10-18T08:00:18'),
+(384, 1, 'Finance Desk', 'FINANCIAL_SECRETARY', 'JOURNAL_ENTRY_POSTED', 'JOURNAL_ENTRY', 'JE-20261018-E6E60085', NULL, NULL, NULL, '{"id": 185, "status": "POSTED", "narration": "Balanced test journal entry", "entry_date": "2026-10-18", "is_balanced": true, "lines_count": 2, "total_debit": 25000.0, "entry_number": "JE-20261018-E6E60085", "total_credit": 25000.0, "source_module": "MANUAL_JOURNAL", "source_reference": "TEST-BAL-1792306829"}', 'Journal entry JE-20261018-E6E60085 (POSTED) recorded: NGN 25,000.00.', '2026-10-18T08:00:29'),
+(385, 2, 'Finance Desk', 'FINANCIAL_SECRETARY', 'JOURNAL_ENTRY_DRAFTED', 'JOURNAL_ENTRY', 'JE-20261018-D9619FA8', NULL, NULL, NULL, '{"id": 186, "status": "DRAFT", "narration": "Monthly Cloud Database Hosting & Maintenance Invoice", "entry_date": "2026-10-18", "is_balanced": true, "lines_count": 2, "total_debit": 15000.0, "entry_number": "JE-20261018-D9619FA8", "total_credit": 15000.0, "source_module": "MANUAL_JOURNAL", "source_reference": "MAN-DRAFT-89739A"}', 'Journal entry JE-20261018-D9619FA8 (DRAFT) recorded: NGN 15,000.00.', '2026-10-18T08:00:29'),
+(386, 1, 'PRESIDENT', 'PRESIDENT', 'JOURNAL_ENTRY_POSTED', 'JOURNAL_ENTRY', 'JE-20261018-D9619FA8', NULL, NULL, '{"status": "DRAFT"}', '{"status": "POSTED", "approved_by": 1}', 'Journal entry JE-20261018-D9619FA8 was POSTED by PRESIDENT.', '2026-10-18T08:00:29'),
+(387, 1, 'Finance Desk', 'FINANCIAL_SECRETARY', 'DIVIDEND_PERIOD_SIMULATED', 'DIVIDEND_PERIOD', '5', NULL, NULL, NULL, '{"net_surplus": 500000.0, "period_name": "FY2026 Official Dividend Run"}', 'Created dividend distribution draft #5 (FY2026 Official Dividend Run) for audit review.', '2026-10-18T08:00:29'),
+(388, 1, 'Finance Desk', 'FINANCIAL_SECRETARY', 'JOURNAL_ENTRY_POSTED', 'JOURNAL_ENTRY', 'JE-20261018-D83AC82A', NULL, NULL, NULL, '{"id": 195, "status": "POSTED", "narration": "Balanced test journal entry", "entry_date": "2026-10-18", "is_balanced": true, "lines_count": 2, "total_debit": 25000.0, "entry_number": "JE-20261018-D83AC82A", "total_credit": 25000.0, "source_module": "MANUAL_JOURNAL", "source_reference": "TEST-BAL-1792306842"}', 'Journal entry JE-20261018-D83AC82A (POSTED) recorded: NGN 25,000.00.', '2026-10-18T08:00:42'),
+(389, 2, 'Finance Desk', 'FINANCIAL_SECRETARY', 'JOURNAL_ENTRY_DRAFTED', 'JOURNAL_ENTRY', 'JE-20261018-BF8A11EF', NULL, NULL, NULL, '{"id": 196, "status": "DRAFT", "narration": "Monthly Cloud Database Hosting & Maintenance Invoice", "entry_date": "2026-10-18", "is_balanced": true, "lines_count": 2, "total_debit": 15000.0, "entry_number": "JE-20261018-BF8A11EF", "total_credit": 15000.0, "source_module": "MANUAL_JOURNAL", "source_reference": "MAN-DRAFT-14C7B2"}', 'Journal entry JE-20261018-BF8A11EF (DRAFT) recorded: NGN 15,000.00.', '2026-10-18T08:00:42'),
+(390, 1, 'PRESIDENT', 'PRESIDENT', 'JOURNAL_ENTRY_POSTED', 'JOURNAL_ENTRY', 'JE-20261018-BF8A11EF', NULL, NULL, '{"status": "DRAFT"}', '{"status": "POSTED", "approved_by": 1}', 'Journal entry JE-20261018-BF8A11EF was POSTED by PRESIDENT.', '2026-10-18T08:00:42'),
+(391, 1, 'Finance Desk', 'FINANCIAL_SECRETARY', 'DIVIDEND_PERIOD_SIMULATED', 'DIVIDEND_PERIOD', '6', NULL, NULL, NULL, '{"net_surplus": 500000.0, "period_name": "FY2026 Official Dividend Run"}', 'Created dividend distribution draft #6 (FY2026 Official Dividend Run) for audit review.', '2026-10-18T08:00:42'),
+(392, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_CREATED', 'ROLE', '45', NULL, NULL, NULL, '{"role_code": "ROLE_TEST_1792306844", "role_name": "Credit Risk Inspector 1792306844", "permissions": ["apply_loan", "credit_committee_approval", "system_audit"]}', 'Created custom role ROLE_TEST_1792306844 with 3 permissions.', '2026-10-18T08:00:44'),
+(393, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_ASSIGNED', 'MEMBER_ROLE', '2:45', NULL, NULL, NULL, '{"member_id": 2, "role_code": "ROLE_TEST_1792306844", "member_code": "WMC-2026-002"}', 'Assigned role Credit Risk Inspector 1792306844 (ROLE_TEST_1792306844) to member WMC-2026-002.', '2026-10-18T08:00:44'),
+(394, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_REVOKED', 'MEMBER_ROLE', '2:45', NULL, NULL, '{"role_id": 45, "member_id": 2}', NULL, 'Revoked role ID 45 from member ID 2.', '2026-10-18T08:00:44'),
+(395, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '83', NULL, NULL, NULL, '{"purpose": "Professional Equipment Acquisition", "guarantors": [], "product_name": "Ordinary loan (*2 of savings)", "initial_stage": "CREDIT_COMMITTEE", "tenure_months": 6, "loan_reference": "L-WMC-2026-411C590A", "principal_amount": 60000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-411C590A for NGN 60,000.00 (6 mos) with 0 guarantor(s).', '2026-10-18T08:00:44'),
+(396, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '83', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "FINANCIAL_SECRETARY", "status": "PENDING", "percent": 33}', 'Approved to 33% on loan L-WMC-2026-411C590A.', '2026-10-18T08:00:44'),
+(397, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '83', NULL, NULL, '{"stage": "FINANCIAL_SECRETARY", "percent": 33}', '{"stage": "TREASURER", "status": "PENDING", "percent": 66}', 'Approved to 66% on loan L-WMC-2026-411C590A.', '2026-10-18T08:00:44'),
+(398, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '83', NULL, NULL, '{"stage": "TREASURER", "percent": 66}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Approved to 100% on loan L-WMC-2026-411C590A.', '2026-10-18T08:00:44'),
+(399, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '84', NULL, NULL, NULL, '{"purpose": "Medical Emergency Financing", "guarantors": [], "product_name": "Ordinary loan (*2 of savings)", "initial_stage": "CREDIT_COMMITTEE", "tenure_months": 4, "loan_reference": "L-WMC-2026-42F4BAA4", "principal_amount": 50000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-42F4BAA4 for NGN 50,000.00 (4 mos) with 0 guarantor(s).', '2026-10-18T08:00:44'),
+(400, 1, 'Qazeem Adebowale', 'PRESIDENT', 'PRESIDENTIAL_OVERRIDE', 'LOAN', '84', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Presidential Override: 100% disbursed on loan L-WMC-2026-42F4BAA4.', '2026-10-18T08:00:44')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.audit_logs (id, user_id, actor_name, actor_role, action, resource_type, resource_id, ip_address, user_agent, details_before, details_after, summary, created_at) VALUES
+(401, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '85', NULL, NULL, NULL, '{"purpose": "Commercial Venture Capital", "guarantors": [], "product_name": "Ordinary loan (*2 of savings)", "initial_stage": "CREDIT_COMMITTEE", "tenure_months": 6, "loan_reference": "L-WMC-2026-3D25985F", "principal_amount": 35000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-3D25985F for NGN 35,000.00 (6 mos) with 0 guarantor(s).', '2026-10-18T08:00:44'),
+(402, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_DECLINED', 'LOAN', '85', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "status": "PENDING"}', '{"status": "DECLINED", "decline_reason": "Requested amount exceeds 2x unencumbered savings cap."}', 'Declined loan L-WMC-2026-3D25985F. Reason: Requested amount exceeds 2x unencumbered savings cap.', '2026-10-18T08:00:45'),
+(403, 2, 'Member', 'MEMBER', 'LOAN_APPEAL_SUBMITTED', 'LOAN_APPEAL', '16', NULL, NULL, '{"status": "DECLINED", "loan_id": 85}', '{"status": "UNDER_APPEAL", "loan_id": 85, "appeal_id": 16}', 'Filed appeal #16 against loan decline L-WMC-2026-3D25985F.', '2026-10-18T08:00:45'),
+(404, 1, 'Reviewing Officer', 'PRESIDENT', 'LOAN_APPEAL_RESOLVED', 'LOAN_APPEAL', '16', NULL, NULL, '{"status": "PENDING_REVIEW"}', '{"status": "REINSTATE", "response": "Supplementary proof verified. Approved under presidential arbitration."}', 'Resolved appeal #16: REINSTATE.', '2026-10-18T08:00:45'),
+(405, 2, 'Olaleke Olaoye', 'MEMBER', 'MANUAL_PAYMENT_LOGGED', 'MANUAL_PAYMENT', '16', NULL, NULL, NULL, '{"date": "2026-10-17", "amount": 25000.0, "receipt": "/uploads/receipts/polaris_teller_0099.jpg", "reference": "POLARIS-DEP-1792306845"}', 'Logged Polaris Bank transfer of NGN 25,000.00 (Ref: POLARIS-DEP-1792306845).', '2026-10-18T08:00:45'),
+(406, 1, 'Treasury Officer', 'PRESIDENT', 'MANUAL_PAYMENT_VERIFIED', 'MANUAL_PAYMENT', '16', NULL, NULL, '{"status": "PENDING_RECONCILIATION"}', '{"status": "VERIFIED", "distribution": {"status": "SUCCESS", "message": "Successfully auto-distributed NGN 25,000.00 according to Payment Advice #WMC-ADV-202610-0002.", "advice_id": 2, "allocations": {"fines": 0.0, "welfare": 0.0, "share_capital": 0.0, "loan_repayment": 0.0, "target_savings": 0.0, "regular_savings": 0.0, "registration_fee": 0.0, "surplus_regular_savings": 25000.0}, "advice_status": "FULLY_SETTLED", "amount_received": 25000.0, "advice_reference": "WMC-ADV-202610-0002", "payment_reference": "POLARIS-DEP-1792306845", "outstanding_balance": 0.0, "surplus_credited_to_savings": 25000.0, "total_obligations_satisfied": 0.0}}', 'Verified Polaris payment #16 for NGN 25,000.00 (Ref: POLARIS-DEP-1792306845).', '2026-10-18T08:00:45'),
+(407, 1, 'Executive Officer', 'PRESIDENT', 'DIRECT_MEMBER_CREDIT', 'MEMBER_ACCOUNT', '2', NULL, NULL, NULL, '{"amount": 10000.0, "category": "SAVINGS", "narration": "Statutory incentive dividend allocation authorized by Board"}', 'Direct credit of NGN 10,000.00 (SAVINGS) to WMC-2026-002.', '2026-10-18T08:00:45'),
+(408, 1, 'Executive Officer', 'PRESIDENT', 'PAYMENT_ADVICE_MODIFIED', 'PAYMENT_ADVICE', '1', NULL, NULL, '{"loan": 0.0, "fines": 0.0, "shares": 3000.0, "arrears": 0.0, "savings": 22000.0, "targets": 0.0, "welfare": 1000.0, "total_expected": 31000.0, "registration_fee": 5000.0}', '{"loan": 0.0, "fines": 0.0, "shares": 3000.0, "arrears": 0.0, "savings": 22000.0, "targets": 0.0, "welfare": 1000.0, "total_expected": 31000.0, "registration_fee": 5000.0}', 'Modified advice #1 (THIS_MONTH_ONLY). Justification: Cooperator requested temporary voluntary increase in share equity per SOP', '2026-10-18T08:00:45'),
+(409, 10014, 'Compliance Engine', 'SYSTEM', 'MEMBER_AUTO_SUSPENDED_FOR_ARREARS', 'MEMBER', '10014', NULL, NULL, '{"membership_status": "ACTIVE"}', '{"membership_status": "SUSPENDED", "unpaid_advices_count": 3}', 'Automated suspension applied to cooperator WMC-TEST-REG99 due to 3 consecutive unremitted billing periods.', '2026-10-18T08:00:47'),
+(410, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '86', NULL, NULL, NULL, '{"purpose": "Working capital financing with peer co-signers", "guarantors": [{"name": "Abdul Wasiu Adebowale", "member_code": "WMC-2026-015", "guaranteed_amount": 25000.0, "guarantor_member_id": 15}, {"name": "Amara Ugbana", "member_code": "WMC-2026-009", "guaranteed_amount": 25000.0, "guarantor_member_id": 14}], "product_name": "Ordinary loan (*2 of savings)", "initial_stage": "GUARANTOR_CONSENT", "tenure_months": 6, "loan_reference": "L-WMC-2026-D1496574", "principal_amount": 50000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-D1496574 for NGN 50,000.00 (6 mos) with 2 guarantor(s).', '2026-10-18T08:00:49'),
+(411, 1, 'Qazeem Adebowale', 'PRESIDENT', 'PRESIDENTIAL_OVERRIDE', 'LOAN', '86', NULL, NULL, '{"stage": "GUARANTOR_CONSENT", "percent": 0}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Presidential Override: 100% disbursed on loan L-WMC-2026-D1496574.', '2026-10-18T08:00:49'),
+(412, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '88', NULL, NULL, NULL, '{"purpose": "Working capital facility testing guarantor workflow", "guarantors": [{"name": "Qazeem Adebowale", "member_code": "WMC-2026-001", "guaranteed_amount": 50000.0, "guarantor_member_id": 1}], "product_name": "Ordinary loan (*2 of savings)", "initial_stage": "GUARANTOR_CONSENT", "tenure_months": 3, "loan_reference": "L-WMC-2026-3EB551D4", "principal_amount": 50000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-3EB551D4 for NGN 50,000.00 (3 mos) with 1 guarantor(s).', '2026-10-18T08:00:55'),
+(413, 1, 'Qazeem Adebowale', 'COOPERATOR', 'GUARANTOR_DIGITAL_CONSENT_SIGNED', 'LOAN_GUARANTOR', '47', NULL, NULL, '{"status": "PENDING_CONSENT"}', '{"status": "ACCEPTED", "loan_reference": "L-WMC-2026-3EB551D4", "guaranteed_amount": 50000.0, "all_guarantors_consented": true}', 'Cooperator WMC-2026-001 digitally signed guarantee for NGN 50,000.00 on L-WMC-2026-3EB551D4.', '2026-10-18T08:00:55'),
+(414, 9999, 'TestExit Cooperator', 'COOPERATOR', 'MEMBER_EXIT_REQUEST_LODGED', 'MEMBER_EXIT', '15', NULL, NULL, '{"membership_status": "ACTIVE"}', '{"exit_id": 15, "exit_type": "VOLUNTARY_WITHDRAWAL", "net_refund": 170000.0, "outstanding_loans": 0.0, "active_guarantor_commitments": 0}', 'Lodge VOLUNTARY_WITHDRAWAL notice for WMC-TEST-999 (Net Liquidation: NGN 170,000.00).', '2026-10-18T08:00:55'),
+(415, 1, 'PRESIDENT', 'PRESIDENT', 'MEMBER_EXIT_SETTLEMENT_APPROVED', 'MEMBER_EXIT', '15', NULL, NULL, '{"membership_status": "ACTIVE"}', '{"new_status": "EXITED", "net_refund_amount": 170000.0, "refund_payment_ref": "EXIT-TEST-SETTLE-001"}', 'Approved exit settlement #15 for WMC-TEST-999. Status: EXITED, Refund: NGN 170,000.00.', '2026-10-18T08:00:55'),
+(416, 1, 'System Administrator', 'SUPER_ADMIN', 'BULK_MEMBERS_IMPORTED', 'MEMBERS', 'BULK_CSV', NULL, NULL, NULL, '{"skipped_count": 0, "imported_count": 1}', 'Bulk imported 1 cooperator(s); skipped 0 row(s).', '2026-10-18T08:00:55'),
+(417, 2, 'Olaleke Olaoye', 'COOPERATOR', 'MEMBER_EXIT_REQUEST_LODGED', 'MEMBER_EXIT', '16', NULL, NULL, '{"membership_status": "ACTIVE"}', '{"exit_id": 16, "exit_type": "VOLUNTARY_WITHDRAWAL", "net_refund": -2956257.39, "outstanding_loans": 3956125.0, "active_guarantor_commitments": 0}', 'Lodge VOLUNTARY_WITHDRAWAL notice for WMC-2026-002 (Net Liquidation: NGN -2,956,257.39).', '2026-10-18T08:00:57'),
+(418, 10016, 'Compliance Engine', 'SYSTEM', 'MEMBER_AUTO_SUSPENDED_FOR_ARREARS', 'MEMBER', '10016', NULL, NULL, '{"membership_status": "ACTIVE"}', '{"membership_status": "SUSPENDED", "unpaid_advices_count": 4}', 'Automated suspension applied to cooperator WMC-TEST-ARR due to 4 consecutive unremitted billing periods.', '2026-10-18T08:00:57'),
+(419, 1, 'Executive Desk', 'FINSEC_PRESIDENT', 'LOAN_FORECLOSURE_EXECUTED', 'LOAN', '88', NULL, NULL, '{"outstanding_balance": 80000.0}', '{"notes": "Statutory 90-day uncured default resolution approved by FinSec & President", "new_status": "ACTIVE", "total_offset": 50000.0, "borrower_offset": 30000.0, "guarantor_offset": 20000.0, "new_outstanding_balance": 30000.0}', 'Executed statutory foreclosure offset of NGN 50,000.00 on L-WMC-2026-3EB551D4.', '2026-10-18T08:00:58'),
+(420, 1, 'Finance Desk', 'FINANCIAL_SECRETARY', 'JOURNAL_ENTRY_POSTED', 'JOURNAL_ENTRY', 'JE-20261018-84CB1BAA', NULL, NULL, NULL, '{"id": 216, "status": "POSTED", "narration": "Balanced test journal entry", "entry_date": "2026-10-18", "is_balanced": true, "lines_count": 2, "total_debit": 25000.0, "entry_number": "JE-20261018-84CB1BAA", "total_credit": 25000.0, "source_module": "MANUAL_JOURNAL", "source_reference": "TEST-BAL-1792306930"}', 'Journal entry JE-20261018-84CB1BAA (POSTED) recorded: NGN 25,000.00.', '2026-10-18T08:02:10'),
+(421, 2, 'Finance Desk', 'FINANCIAL_SECRETARY', 'JOURNAL_ENTRY_DRAFTED', 'JOURNAL_ENTRY', 'JE-20261018-D38330CD', NULL, NULL, NULL, '{"id": 217, "status": "DRAFT", "narration": "Monthly Cloud Database Hosting & Maintenance Invoice", "entry_date": "2026-10-18", "is_balanced": true, "lines_count": 2, "total_debit": 15000.0, "entry_number": "JE-20261018-D38330CD", "total_credit": 15000.0, "source_module": "MANUAL_JOURNAL", "source_reference": "MAN-DRAFT-A4CDCE"}', 'Journal entry JE-20261018-D38330CD (DRAFT) recorded: NGN 15,000.00.', '2026-10-18T08:02:11'),
+(422, 1, 'PRESIDENT', 'PRESIDENT', 'JOURNAL_ENTRY_POSTED', 'JOURNAL_ENTRY', 'JE-20261018-D38330CD', NULL, NULL, '{"status": "DRAFT"}', '{"status": "POSTED", "approved_by": 1}', 'Journal entry JE-20261018-D38330CD was POSTED by PRESIDENT.', '2026-10-18T08:02:11'),
+(423, 1, 'Finance Desk', 'FINANCIAL_SECRETARY', 'DIVIDEND_PERIOD_SIMULATED', 'DIVIDEND_PERIOD', '7', NULL, NULL, NULL, '{"net_surplus": 500000.0, "period_name": "FY2026 Official Dividend Run"}', 'Created dividend distribution draft #7 (FY2026 Official Dividend Run) for audit review.', '2026-10-18T08:02:11'),
+(424, 1, 'PRESIDENT', 'PRESIDENT', 'DIVIDEND_DISTRIBUTION_POSTED', 'DIVIDEND_PERIOD', '7', NULL, NULL, '{"status": "AUDIT_REVIEW"}', '{"status": "APPROVED_POSTED", "tot_bank_payouts": 0.0, "statutory_reserve": 250000.0, "tot_savings_credits": 249999.98}', 'Approved & posted annual dividend #7. Savings Credited: NGN 249,999.98, Bank Payouts: NGN 0.00.', '2026-10-18T08:02:11'),
+(425, 2, 'Olaleke Olaoye', 'COOPERATOR', 'MEMBER_EXIT_REQUEST_LODGED', 'MEMBER_EXIT', '17', NULL, NULL, '{"membership_status": "ACTIVE"}', '{"exit_id": 17, "exit_type": "VOLUNTARY_WITHDRAWAL", "net_refund": -2950254.98, "outstanding_loans": 3986125.0, "active_guarantor_commitments": 0}', 'Lodge VOLUNTARY_WITHDRAWAL notice for WMC-2026-002 (Net Liquidation: NGN -2,950,254.98).', '2026-10-18T08:02:17'),
+(426, 10017, 'Compliance Engine', 'SYSTEM', 'MEMBER_AUTO_SUSPENDED_FOR_ARREARS', 'MEMBER', '10017', NULL, NULL, '{"membership_status": "ACTIVE"}', '{"membership_status": "SUSPENDED", "unpaid_advices_count": 4}', 'Automated suspension applied to cooperator WMC-TEST-ARR due to 4 consecutive unremitted billing periods.', '2026-10-18T08:02:17'),
+(427, 1, 'Executive Desk', 'FINSEC_PRESIDENT', 'LOAN_FORECLOSURE_EXECUTED', 'LOAN', '88', NULL, NULL, '{"outstanding_balance": 80000.0}', '{"notes": "Statutory 90-day uncured default resolution approved by FinSec & President", "new_status": "ACTIVE", "total_offset": 50000.0, "borrower_offset": 30000.0, "guarantor_offset": 20000.0, "new_outstanding_balance": 30000.0}', 'Executed statutory foreclosure offset of NGN 50,000.00 on L-WMC-2026-3EB551D4.', '2026-10-18T08:02:18'),
+(428, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_CREATED', 'ROLE', '46', NULL, NULL, NULL, '{"role_code": "ROLE_TEST_1792306945", "role_name": "Credit Risk Inspector 1792306945", "permissions": ["apply_loan", "credit_committee_approval", "system_audit"]}', 'Created custom role ROLE_TEST_1792306945 with 3 permissions.', '2026-10-18T08:02:25'),
+(429, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_ASSIGNED', 'MEMBER_ROLE', '2:46', NULL, NULL, NULL, '{"member_id": 2, "role_code": "ROLE_TEST_1792306945", "member_code": "WMC-2026-002"}', 'Assigned role Credit Risk Inspector 1792306945 (ROLE_TEST_1792306945) to member WMC-2026-002.', '2026-10-18T08:02:25'),
+(430, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_REVOKED', 'MEMBER_ROLE', '2:46', NULL, NULL, '{"role_id": 46, "member_id": 2}', NULL, 'Revoked role ID 46 from member ID 2.', '2026-10-18T08:02:25'),
+(431, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '89', NULL, NULL, NULL, '{"purpose": "Professional Equipment Acquisition", "guarantors": [], "product_name": "Ordinary loan (*2 of savings)", "initial_stage": "CREDIT_COMMITTEE", "tenure_months": 6, "loan_reference": "L-WMC-2026-B2B13EB5", "principal_amount": 60000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-B2B13EB5 for NGN 60,000.00 (6 mos) with 0 guarantor(s).', '2026-10-18T08:02:25'),
+(432, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '89', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "FINANCIAL_SECRETARY", "status": "PENDING", "percent": 33}', 'Approved to 33% on loan L-WMC-2026-B2B13EB5.', '2026-10-18T08:02:25'),
+(433, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '89', NULL, NULL, '{"stage": "FINANCIAL_SECRETARY", "percent": 33}', '{"stage": "TREASURER", "status": "PENDING", "percent": 66}', 'Approved to 66% on loan L-WMC-2026-B2B13EB5.', '2026-10-18T08:02:25'),
+(434, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '89', NULL, NULL, '{"stage": "TREASURER", "percent": 66}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Approved to 100% on loan L-WMC-2026-B2B13EB5.', '2026-10-18T08:02:25'),
+(435, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '90', NULL, NULL, NULL, '{"purpose": "Medical Emergency Financing", "guarantors": [], "product_name": "Ordinary loan (*2 of savings)", "initial_stage": "CREDIT_COMMITTEE", "tenure_months": 4, "loan_reference": "L-WMC-2026-0A354FC6", "principal_amount": 50000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-0A354FC6 for NGN 50,000.00 (4 mos) with 0 guarantor(s).', '2026-10-18T08:02:25'),
+(436, 1, 'Qazeem Adebowale', 'PRESIDENT', 'PRESIDENTIAL_OVERRIDE', 'LOAN', '90', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Presidential Override: 100% disbursed on loan L-WMC-2026-0A354FC6.', '2026-10-18T08:02:26'),
+(437, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '91', NULL, NULL, NULL, '{"purpose": "Commercial Venture Capital", "guarantors": [], "product_name": "Ordinary loan (*2 of savings)", "initial_stage": "CREDIT_COMMITTEE", "tenure_months": 6, "loan_reference": "L-WMC-2026-9B6E7349", "principal_amount": 35000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-9B6E7349 for NGN 35,000.00 (6 mos) with 0 guarantor(s).', '2026-10-18T08:02:26'),
+(438, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_DECLINED', 'LOAN', '91', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "status": "PENDING"}', '{"status": "DECLINED", "decline_reason": "Requested amount exceeds 2x unencumbered savings cap."}', 'Declined loan L-WMC-2026-9B6E7349. Reason: Requested amount exceeds 2x unencumbered savings cap.', '2026-10-18T08:02:26'),
+(439, 2, 'Member', 'MEMBER', 'LOAN_APPEAL_SUBMITTED', 'LOAN_APPEAL', '17', NULL, NULL, '{"status": "DECLINED", "loan_id": 91}', '{"status": "UNDER_APPEAL", "loan_id": 91, "appeal_id": 17}', 'Filed appeal #17 against loan decline L-WMC-2026-9B6E7349.', '2026-10-18T08:02:26'),
+(440, 1, 'Reviewing Officer', 'PRESIDENT', 'LOAN_APPEAL_RESOLVED', 'LOAN_APPEAL', '17', NULL, NULL, '{"status": "PENDING_REVIEW"}', '{"status": "REINSTATE", "response": "Supplementary proof verified. Approved under presidential arbitration."}', 'Resolved appeal #17: REINSTATE.', '2026-10-18T08:02:26'),
+(441, 2, 'Olaleke Olaoye', 'MEMBER', 'MANUAL_PAYMENT_LOGGED', 'MANUAL_PAYMENT', '17', NULL, NULL, NULL, '{"date": "2026-10-17", "amount": 25000.0, "receipt": "/uploads/receipts/polaris_teller_0099.jpg", "reference": "POLARIS-DEP-1792306946"}', 'Logged Polaris Bank transfer of NGN 25,000.00 (Ref: POLARIS-DEP-1792306946).', '2026-10-18T08:02:26'),
+(442, 1, 'Treasury Officer', 'PRESIDENT', 'MANUAL_PAYMENT_VERIFIED', 'MANUAL_PAYMENT', '17', NULL, NULL, '{"status": "PENDING_RECONCILIATION"}', '{"status": "VERIFIED", "distribution": {"status": "SUCCESS", "message": "Successfully auto-distributed NGN 25,000.00 according to Payment Advice #WMC-ADV-202610-0002.", "advice_id": 2, "allocations": {"fines": 0.0, "welfare": 0.0, "share_capital": 0.0, "loan_repayment": 0.0, "target_savings": 0.0, "regular_savings": 0.0, "registration_fee": 0.0, "surplus_regular_savings": 25000.0}, "advice_status": "FULLY_SETTLED", "amount_received": 25000.0, "advice_reference": "WMC-ADV-202610-0002", "payment_reference": "POLARIS-DEP-1792306946", "outstanding_balance": 0.0, "surplus_credited_to_savings": 25000.0, "total_obligations_satisfied": 0.0}}', 'Verified Polaris payment #17 for NGN 25,000.00 (Ref: POLARIS-DEP-1792306946).', '2026-10-18T08:02:26'),
+(443, 1, 'Executive Officer', 'PRESIDENT', 'DIRECT_MEMBER_CREDIT', 'MEMBER_ACCOUNT', '2', NULL, NULL, NULL, '{"amount": 10000.0, "category": "SAVINGS", "narration": "Statutory incentive dividend allocation authorized by Board"}', 'Direct credit of NGN 10,000.00 (SAVINGS) to WMC-2026-002.', '2026-10-18T08:02:26'),
+(444, 1, 'Executive Officer', 'PRESIDENT', 'PAYMENT_ADVICE_MODIFIED', 'PAYMENT_ADVICE', '1', NULL, NULL, '{"loan": 0.0, "fines": 0.0, "shares": 3000.0, "arrears": 0.0, "savings": 22000.0, "targets": 0.0, "welfare": 1000.0, "total_expected": 31000.0, "registration_fee": 5000.0}', '{"loan": 0.0, "fines": 0.0, "shares": 3000.0, "arrears": 0.0, "savings": 22000.0, "targets": 0.0, "welfare": 1000.0, "total_expected": 31000.0, "registration_fee": 5000.0}', 'Modified advice #1 (THIS_MONTH_ONLY). Justification: Cooperator requested temporary voluntary increase in share equity per SOP', '2026-10-18T08:02:26'),
+(445, 10018, 'Compliance Engine', 'SYSTEM', 'MEMBER_AUTO_SUSPENDED_FOR_ARREARS', 'MEMBER', '10018', NULL, NULL, '{"membership_status": "ACTIVE"}', '{"membership_status": "SUSPENDED", "unpaid_advices_count": 3}', 'Automated suspension applied to cooperator WMC-TEST-REG99 due to 3 consecutive unremitted billing periods.', '2026-10-18T08:02:31'),
+(446, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '92', NULL, NULL, NULL, '{"purpose": "Working capital financing with peer co-signers", "guarantors": [{"name": "Abdul Wasiu Adebowale", "member_code": "WMC-2026-015", "guaranteed_amount": 25000.0, "guarantor_member_id": 15}, {"name": "Amara Ugbana", "member_code": "WMC-2026-009", "guaranteed_amount": 25000.0, "guarantor_member_id": 14}], "product_name": "Ordinary loan (*2 of savings)", "initial_stage": "GUARANTOR_CONSENT", "tenure_months": 6, "loan_reference": "L-WMC-2026-ED18C66A", "principal_amount": 50000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-ED18C66A for NGN 50,000.00 (6 mos) with 2 guarantor(s).', '2026-10-18T08:02:35'),
+(447, 1, 'Qazeem Adebowale', 'PRESIDENT', 'PRESIDENTIAL_OVERRIDE', 'LOAN', '92', NULL, NULL, '{"stage": "GUARANTOR_CONSENT", "percent": 0}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Presidential Override: 100% disbursed on loan L-WMC-2026-ED18C66A.', '2026-10-18T08:02:35'),
+(448, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '94', NULL, NULL, NULL, '{"purpose": "Working capital facility testing guarantor workflow", "guarantors": [{"name": "Qazeem Adebowale", "member_code": "WMC-2026-001", "guaranteed_amount": 50000.0, "guarantor_member_id": 1}], "product_name": "Ordinary loan (*2 of savings)", "initial_stage": "GUARANTOR_CONSENT", "tenure_months": 3, "loan_reference": "L-WMC-2026-7BF7ED26", "principal_amount": 50000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-7BF7ED26 for NGN 50,000.00 (3 mos) with 1 guarantor(s).', '2026-10-18T08:02:44'),
+(449, 1, 'Qazeem Adebowale', 'COOPERATOR', 'GUARANTOR_DIGITAL_CONSENT_SIGNED', 'LOAN_GUARANTOR', '54', NULL, NULL, '{"status": "PENDING_CONSENT"}', '{"status": "ACCEPTED", "loan_reference": "L-WMC-2026-7BF7ED26", "guaranteed_amount": 50000.0, "all_guarantors_consented": true}', 'Cooperator WMC-2026-001 digitally signed guarantee for NGN 50,000.00 on L-WMC-2026-7BF7ED26.', '2026-10-18T08:02:44'),
+(450, 9999, 'TestExit Cooperator', 'COOPERATOR', 'MEMBER_EXIT_REQUEST_LODGED', 'MEMBER_EXIT', '18', NULL, NULL, '{"membership_status": "ACTIVE"}', '{"exit_id": 18, "exit_type": "VOLUNTARY_WITHDRAWAL", "net_refund": 170000.0, "outstanding_loans": 0.0, "active_guarantor_commitments": 0}', 'Lodge VOLUNTARY_WITHDRAWAL notice for WMC-TEST-999 (Net Liquidation: NGN 170,000.00).', '2026-10-18T08:02:44')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.audit_logs (id, user_id, actor_name, actor_role, action, resource_type, resource_id, ip_address, user_agent, details_before, details_after, summary, created_at) VALUES
+(451, 1, 'PRESIDENT', 'PRESIDENT', 'MEMBER_EXIT_SETTLEMENT_APPROVED', 'MEMBER_EXIT', '18', NULL, NULL, '{"membership_status": "ACTIVE"}', '{"new_status": "EXITED", "net_refund_amount": 170000.0, "refund_payment_ref": "EXIT-TEST-SETTLE-001"}', 'Approved exit settlement #18 for WMC-TEST-999. Status: EXITED, Refund: NGN 170,000.00.', '2026-10-18T08:02:44'),
+(452, 1, 'System Administrator', 'SUPER_ADMIN', 'BULK_MEMBERS_IMPORTED', 'MEMBERS', 'BULK_CSV', NULL, NULL, NULL, '{"skipped_count": 0, "imported_count": 1}', 'Bulk imported 1 cooperator(s); skipped 0 row(s).', '2026-10-18T08:02:44'),
+(453, 1, 'Executive Desk', 'FINSEC_PRESIDENT', 'LOAN_FORECLOSURE_EXECUTED', 'LOAN', '88', NULL, NULL, '{"outstanding_balance": 30000.0}', '{"notes": "", "new_status": "COMPLETED", "total_offset": 30000.0, "borrower_offset": 0.0, "guarantor_offset": 30000.0, "new_outstanding_balance": 0.0}', 'Executed statutory foreclosure offset of NGN 30,000.00 on L-WMC-2026-3EB551D4.', '2026-10-18T08:15:01'),
+(454, 1, 'Qazeem Adebowale', 'PRESIDENT', 'PRESIDENTIAL_OVERRIDE', 'LOAN', '53', NULL, NULL, '{"stage": "GUARANTOR_CONSENT", "percent": 0}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Presidential Override: 100% disbursed on loan L-WMC-2026-5DC53AFD.', '2026-10-18T08:15:29'),
+(455, 1, 'Qazeem Adebowale', 'PRESIDENT', 'PRESIDENTIAL_OVERRIDE', 'LOAN', '52', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Presidential Override: 100% disbursed on loan L-WMC-2026-5C03FBF6.', '2026-10-18T08:15:35'),
+(456, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_CREATED', 'ROLE', '47', NULL, NULL, NULL, '{"role_code": "ROLE_TEST_1792308374", "role_name": "Credit Risk Inspector 1792308374", "permissions": ["apply_loan", "credit_committee_approval", "system_audit"]}', 'Created custom role ROLE_TEST_1792308374 with 3 permissions.', '2026-10-18T08:26:15'),
+(457, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_ASSIGNED', 'MEMBER_ROLE', '2:47', NULL, NULL, NULL, '{"member_id": 2, "role_code": "ROLE_TEST_1792308374", "member_code": "WMC-2026-002"}', 'Assigned role Credit Risk Inspector 1792308374 (ROLE_TEST_1792308374) to member WMC-2026-002.', '2026-10-18T08:26:15'),
+(458, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_REVOKED', 'MEMBER_ROLE', '2:47', NULL, NULL, '{"role_id": 47, "member_id": 2}', NULL, 'Revoked role ID 47 from member ID 2.', '2026-10-18T08:26:15'),
+(459, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '95', NULL, NULL, NULL, '{"purpose": "Professional Equipment Acquisition", "guarantors": [], "product_name": "Ordinary loan (*2 of savings)", "initial_stage": "CREDIT_COMMITTEE", "tenure_months": 6, "loan_reference": "L-WMC-2026-4708585A", "principal_amount": 60000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-4708585A for NGN 60,000.00 (6 mos) with 0 guarantor(s).', '2026-10-18T08:26:15'),
+(460, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '95', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "FINANCIAL_SECRETARY", "status": "PENDING", "percent": 33}', 'Approved to 33% on loan L-WMC-2026-4708585A.', '2026-10-18T08:26:15'),
+(461, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '95', NULL, NULL, '{"stage": "FINANCIAL_SECRETARY", "percent": 33}', '{"stage": "TREASURER", "status": "PENDING", "percent": 66}', 'Approved to 66% on loan L-WMC-2026-4708585A.', '2026-10-18T08:26:15'),
+(462, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '95', NULL, NULL, '{"stage": "TREASURER", "percent": 66}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Approved to 100% on loan L-WMC-2026-4708585A.', '2026-10-18T08:26:15'),
+(463, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '96', NULL, NULL, NULL, '{"purpose": "Medical Emergency Financing", "guarantors": [], "product_name": "Ordinary loan (*2 of savings)", "initial_stage": "CREDIT_COMMITTEE", "tenure_months": 4, "loan_reference": "L-WMC-2026-6F0F1438", "principal_amount": 50000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-6F0F1438 for NGN 50,000.00 (4 mos) with 0 guarantor(s).', '2026-10-18T08:26:15'),
+(464, 1, 'Qazeem Adebowale', 'PRESIDENT', 'PRESIDENTIAL_OVERRIDE', 'LOAN', '96', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Presidential Override: 100% disbursed on loan L-WMC-2026-6F0F1438.', '2026-10-18T08:26:16'),
+(465, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '97', NULL, NULL, NULL, '{"purpose": "Commercial Venture Capital", "guarantors": [], "product_name": "Ordinary loan (*2 of savings)", "initial_stage": "CREDIT_COMMITTEE", "tenure_months": 6, "loan_reference": "L-WMC-2026-14744738", "principal_amount": 35000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-14744738 for NGN 35,000.00 (6 mos) with 0 guarantor(s).', '2026-10-18T08:26:16'),
+(466, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_DECLINED', 'LOAN', '97', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "status": "PENDING"}', '{"status": "DECLINED", "decline_reason": "Requested amount exceeds 2x unencumbered savings cap."}', 'Declined loan L-WMC-2026-14744738. Reason: Requested amount exceeds 2x unencumbered savings cap.', '2026-10-18T08:26:16'),
+(467, 2, 'Member', 'MEMBER', 'LOAN_APPEAL_SUBMITTED', 'LOAN_APPEAL', '18', NULL, NULL, '{"status": "DECLINED", "loan_id": 97}', '{"status": "UNDER_APPEAL", "loan_id": 97, "appeal_id": 18}', 'Filed appeal #18 against loan decline L-WMC-2026-14744738.', '2026-10-18T08:26:16'),
+(468, 1, 'Reviewing Officer', 'PRESIDENT', 'LOAN_APPEAL_RESOLVED', 'LOAN_APPEAL', '18', NULL, NULL, '{"status": "PENDING_REVIEW"}', '{"status": "REINSTATE", "response": "Supplementary proof verified. Approved under presidential arbitration."}', 'Resolved appeal #18: REINSTATE.', '2026-10-18T08:26:16'),
+(469, 2, 'Olaleke Olaoye', 'MEMBER', 'MANUAL_PAYMENT_LOGGED', 'MANUAL_PAYMENT', '18', NULL, NULL, NULL, '{"date": "2026-10-17", "amount": 25000.0, "receipt": "/uploads/receipts/polaris_teller_0099.jpg", "reference": "POLARIS-DEP-1792308376"}', 'Logged Polaris Bank transfer of NGN 25,000.00 (Ref: POLARIS-DEP-1792308376).', '2026-10-18T08:26:16'),
+(470, 1, 'Treasury Officer', 'PRESIDENT', 'MANUAL_PAYMENT_VERIFIED', 'MANUAL_PAYMENT', '18', NULL, NULL, '{"status": "PENDING_RECONCILIATION"}', '{"status": "VERIFIED", "distribution": {"status": "SUCCESS", "message": "Successfully auto-distributed NGN 25,000.00 according to Payment Advice #WMC-ADV-202610-0002.", "advice_id": 2, "allocations": {"fines": 0.0, "welfare": 0.0, "share_capital": 0.0, "loan_repayment": 0.0, "target_savings": 0.0, "regular_savings": 0.0, "registration_fee": 0.0, "surplus_regular_savings": 25000.0}, "advice_status": "FULLY_SETTLED", "amount_received": 25000.0, "advice_reference": "WMC-ADV-202610-0002", "payment_reference": "POLARIS-DEP-1792308376", "outstanding_balance": 0.0, "surplus_credited_to_savings": 25000.0, "total_obligations_satisfied": 0.0}}', 'Verified Polaris payment #18 for NGN 25,000.00 (Ref: POLARIS-DEP-1792308376).', '2026-10-18T08:26:16'),
+(471, 1, 'Executive Officer', 'PRESIDENT', 'DIRECT_MEMBER_CREDIT', 'MEMBER_ACCOUNT', '2', NULL, NULL, NULL, '{"amount": 10000.0, "category": "SAVINGS", "narration": "Statutory incentive dividend allocation authorized by Board"}', 'Direct credit of NGN 10,000.00 (SAVINGS) to WMC-2026-002.', '2026-10-18T08:26:16'),
+(472, 1, 'Executive Officer', 'PRESIDENT', 'PAYMENT_ADVICE_MODIFIED', 'PAYMENT_ADVICE', '1', NULL, NULL, '{"loan": 0.0, "fines": 0.0, "shares": 3000.0, "arrears": 0.0, "savings": 22000.0, "targets": 0.0, "welfare": 1000.0, "total_expected": 31000.0, "registration_fee": 5000.0}', '{"loan": 0.0, "fines": 0.0, "shares": 3000.0, "arrears": 0.0, "savings": 22000.0, "targets": 0.0, "welfare": 1000.0, "total_expected": 31000.0, "registration_fee": 5000.0}', 'Modified advice #1 (THIS_MONTH_ONLY). Justification: Cooperator requested temporary voluntary increase in share equity per SOP', '2026-10-18T08:26:16'),
+(473, 2, 'Olaleke Olaoye', 'COOPERATOR', 'MEMBER_EXIT_REQUEST_LODGED', 'MEMBER_EXIT', '19', NULL, NULL, '{"membership_status": "ACTIVE"}', '{"exit_id": 19, "exit_type": "VOLUNTARY_WITHDRAWAL", "net_refund": -3259504.98, "outstanding_loans": 4335375.0, "active_guarantor_commitments": 0}', 'Lodge VOLUNTARY_WITHDRAWAL notice for WMC-2026-002 (Net Liquidation: NGN -3,259,504.98).', '2026-10-18T08:26:45'),
+(474, 10020, 'Compliance Engine', 'SYSTEM', 'MEMBER_AUTO_SUSPENDED_FOR_ARREARS', 'MEMBER', '10020', NULL, NULL, '{"membership_status": "ACTIVE"}', '{"membership_status": "SUSPENDED", "unpaid_advices_count": 4}', 'Automated suspension applied to cooperator WMC-TEST-ARR due to 4 consecutive unremitted billing periods.', '2026-10-18T08:26:46'),
+(475, 1, 'Executive Desk', 'FINSEC_PRESIDENT', 'LOAN_FORECLOSURE_EXECUTED', 'LOAN', '97', NULL, NULL, '{"outstanding_balance": 80000.0}', '{"notes": "Statutory 90-day uncured default resolution approved by FinSec & President", "new_status": "ACTIVE", "total_offset": 50000.0, "borrower_offset": 30000.0, "guarantor_offset": 20000.0, "new_outstanding_balance": 30000.0}', 'Executed statutory foreclosure offset of NGN 50,000.00 on L-WMC-2026-14744738.', '2026-10-18T08:26:48'),
+(476, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_CREATED', 'ROLE', '49', NULL, NULL, NULL, '{"role_code": "ROLE_TEST_1792310220", "role_name": "Credit Risk Inspector 1792310220", "permissions": ["apply_loan", "credit_committee_approval", "system_audit"]}', 'Created custom role ROLE_TEST_1792310220 with 3 permissions.', '2026-10-18T08:57:00'),
+(477, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_ASSIGNED', 'MEMBER_ROLE', '2:49', NULL, NULL, NULL, '{"member_id": 2, "role_code": "ROLE_TEST_1792310220", "member_code": "WMC-2026-002"}', 'Assigned role Credit Risk Inspector 1792310220 (ROLE_TEST_1792310220) to member WMC-2026-002.', '2026-10-18T08:57:00'),
+(478, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_REVOKED', 'MEMBER_ROLE', '2:49', NULL, NULL, '{"role_id": 49, "member_id": 2}', NULL, 'Revoked role ID 49 from member ID 2.', '2026-10-18T08:57:00'),
+(479, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '98', NULL, NULL, NULL, '{"purpose": "Professional Equipment Acquisition", "guarantors": [], "product_name": "Ordinary loan (*2 of savings)", "initial_stage": "CREDIT_COMMITTEE", "tenure_months": 6, "loan_reference": "L-WMC-2026-4FE7FD7F", "principal_amount": 60000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-4FE7FD7F for NGN 60,000.00 (6 mos) with 0 guarantor(s).', '2026-10-18T08:57:00'),
+(480, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '98', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "FINANCIAL_SECRETARY", "status": "PENDING", "percent": 33}', 'Approved to 33% on loan L-WMC-2026-4FE7FD7F.', '2026-10-18T08:57:00'),
+(481, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '98', NULL, NULL, '{"stage": "FINANCIAL_SECRETARY", "percent": 33}', '{"stage": "TREASURER", "status": "PENDING", "percent": 66}', 'Approved to 66% on loan L-WMC-2026-4FE7FD7F.', '2026-10-18T08:57:00'),
+(482, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_APPROVED_STEP', 'LOAN', '98', NULL, NULL, '{"stage": "TREASURER", "percent": 66}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Approved to 100% on loan L-WMC-2026-4FE7FD7F.', '2026-10-18T08:57:00'),
+(483, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '99', NULL, NULL, NULL, '{"purpose": "Medical Emergency Financing", "guarantors": [], "product_name": "Ordinary loan (*2 of savings)", "initial_stage": "CREDIT_COMMITTEE", "tenure_months": 4, "loan_reference": "L-WMC-2026-A08C388B", "principal_amount": 50000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-A08C388B for NGN 50,000.00 (4 mos) with 0 guarantor(s).', '2026-10-18T08:57:01'),
+(484, 1, 'Qazeem Adebowale', 'PRESIDENT', 'PRESIDENTIAL_OVERRIDE', 'LOAN', '99', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "percent": 0}', '{"stage": "DISBURSED", "status": "ACTIVE", "percent": 100}', 'Presidential Override: 100% disbursed on loan L-WMC-2026-A08C388B.', '2026-10-18T08:57:01'),
+(485, 2, 'Olaleke Olaoye', 'MEMBER', 'LOAN_APPLICATION_SUBMITTED', 'LOAN', '100', NULL, NULL, NULL, '{"purpose": "Commercial Venture Capital", "guarantors": [], "product_name": "Ordinary loan (*2 of savings)", "initial_stage": "CREDIT_COMMITTEE", "tenure_months": 6, "loan_reference": "L-WMC-2026-A30ED407", "principal_amount": 35000.0}', 'Lodge Ordinary loan (*2 of savings) application L-WMC-2026-A30ED407 for NGN 35,000.00 (6 mos) with 0 guarantor(s).', '2026-10-18T08:57:01'),
+(486, 1, 'Qazeem Adebowale', 'PRESIDENT', 'LOAN_DECLINED', 'LOAN', '100', NULL, NULL, '{"stage": "CREDIT_COMMITTEE", "status": "PENDING"}', '{"status": "DECLINED", "decline_reason": "Requested amount exceeds 2x unencumbered savings cap."}', 'Declined loan L-WMC-2026-A30ED407. Reason: Requested amount exceeds 2x unencumbered savings cap.', '2026-10-18T08:57:01'),
+(487, 2, 'Member', 'MEMBER', 'LOAN_APPEAL_SUBMITTED', 'LOAN_APPEAL', '19', NULL, NULL, '{"status": "DECLINED", "loan_id": 100}', '{"status": "UNDER_APPEAL", "loan_id": 100, "appeal_id": 19}', 'Filed appeal #19 against loan decline L-WMC-2026-A30ED407.', '2026-10-18T08:57:01'),
+(488, 1, 'Reviewing Officer', 'PRESIDENT', 'LOAN_APPEAL_RESOLVED', 'LOAN_APPEAL', '19', NULL, NULL, '{"status": "PENDING_REVIEW"}', '{"status": "REINSTATE", "response": "Supplementary proof verified. Approved under presidential arbitration."}', 'Resolved appeal #19: REINSTATE.', '2026-10-18T08:57:01'),
+(489, 2, 'Olaleke Olaoye', 'MEMBER', 'MANUAL_PAYMENT_LOGGED', 'MANUAL_PAYMENT', '19', NULL, NULL, NULL, '{"date": "2026-10-17", "amount": 25000.0, "receipt": "/uploads/receipts/polaris_teller_0099.jpg", "reference": "POLARIS-DEP-1792310221"}', 'Logged Polaris Bank transfer of NGN 25,000.00 (Ref: POLARIS-DEP-1792310221).', '2026-10-18T08:57:01'),
+(490, 1, 'Treasury Officer', 'PRESIDENT', 'MANUAL_PAYMENT_VERIFIED', 'MANUAL_PAYMENT', '19', NULL, NULL, '{"status": "PENDING_RECONCILIATION"}', '{"status": "VERIFIED", "distribution": {"status": "SUCCESS", "message": "Successfully auto-distributed NGN 25,000.00 according to Payment Advice #WMC-ADV-202610-0002.", "advice_id": 2, "allocations": {"fines": 0.0, "welfare": 0.0, "share_capital": 0.0, "loan_repayment": 0.0, "target_savings": 0.0, "regular_savings": 0.0, "registration_fee": 0.0, "surplus_regular_savings": 25000.0}, "advice_status": "FULLY_SETTLED", "amount_received": 25000.0, "advice_reference": "WMC-ADV-202610-0002", "payment_reference": "POLARIS-DEP-1792310221", "outstanding_balance": 0.0, "surplus_credited_to_savings": 25000.0, "total_obligations_satisfied": 0.0}}', 'Verified Polaris payment #19 for NGN 25,000.00 (Ref: POLARIS-DEP-1792310221).', '2026-10-18T08:57:01'),
+(491, 1, 'Executive Officer', 'PRESIDENT', 'DIRECT_MEMBER_CREDIT', 'MEMBER_ACCOUNT', '2', NULL, NULL, NULL, '{"amount": 10000.0, "category": "SAVINGS", "narration": "Statutory incentive dividend allocation authorized by Board"}', 'Direct credit of NGN 10,000.00 (SAVINGS) to WMC-2026-002.', '2026-10-18T08:57:01'),
+(492, 1, 'Executive Officer', 'PRESIDENT', 'PAYMENT_ADVICE_MODIFIED', 'PAYMENT_ADVICE', '1', NULL, NULL, '{"loan": 0.0, "fines": 0.0, "shares": 3000.0, "arrears": 0.0, "savings": 22000.0, "targets": 0.0, "welfare": 1000.0, "total_expected": 31000.0, "registration_fee": 5000.0}', '{"loan": 0.0, "fines": 0.0, "shares": 3000.0, "arrears": 0.0, "savings": 22000.0, "targets": 0.0, "welfare": 1000.0, "total_expected": 31000.0, "registration_fee": 5000.0}', 'Modified advice #1 (THIS_MONTH_ONLY). Justification: Cooperator requested temporary voluntary increase in share equity per SOP', '2026-10-18T08:57:01'),
+(493, 2, 'Olaleke Olaoye', 'COOPERATOR', 'MEMBER_EXIT_REQUEST_LODGED', 'MEMBER_EXIT', '20', NULL, NULL, '{"membership_status": "ACTIVE"}', '{"exit_id": 20, "exit_type": "VOLUNTARY_WITHDRAWAL", "net_refund": -3397254.98, "outstanding_loans": 4478125.0, "active_guarantor_commitments": 0}', 'Lodge VOLUNTARY_WITHDRAWAL notice for WMC-2026-002 (Net Liquidation: NGN -3,397,254.98).', '2026-10-18T08:57:11'),
+(494, 10021, 'Compliance Engine', 'SYSTEM', 'MEMBER_AUTO_SUSPENDED_FOR_ARREARS', 'MEMBER', '10021', NULL, NULL, '{"membership_status": "ACTIVE"}', '{"membership_status": "SUSPENDED", "unpaid_advices_count": 4}', 'Automated suspension applied to cooperator WMC-TEST-ARR due to 4 consecutive unremitted billing periods.', '2026-10-18T08:57:11'),
+(495, 1, 'Executive Desk', 'FINSEC_PRESIDENT', 'LOAN_FORECLOSURE_EXECUTED', 'LOAN', '100', NULL, NULL, '{"outstanding_balance": 80000.0}', '{"notes": "Statutory 90-day uncured default resolution approved by FinSec & President", "new_status": "ACTIVE", "total_offset": 50000.0, "borrower_offset": 30000.0, "guarantor_offset": 20000.0, "new_outstanding_balance": 30000.0}', 'Executed statutory foreclosure offset of NGN 50,000.00 on L-WMC-2026-A30ED407.', '2026-10-18T08:57:12'),
+(496, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_DELETED', 'ROLE', '49', NULL, NULL, '{"role_code": "ROLE_TEST_1792310220", "role_name": "Credit Risk Inspector 1792310220"}', NULL, 'Deleted custom operational role ROLE_TEST_1792310220 (Credit Risk Inspector 1792310220).', '2026-10-18T08:59:09'),
+(497, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_DELETED', 'ROLE', '47', NULL, NULL, '{"role_code": "ROLE_TEST_1792308374", "role_name": "Credit Risk Inspector 1792308374"}', NULL, 'Deleted custom operational role ROLE_TEST_1792308374 (Credit Risk Inspector 1792308374).', '2026-10-18T08:59:13'),
+(498, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_DELETED', 'ROLE', '46', NULL, NULL, '{"role_code": "ROLE_TEST_1792306945", "role_name": "Credit Risk Inspector 1792306945"}', NULL, 'Deleted custom operational role ROLE_TEST_1792306945 (Credit Risk Inspector 1792306945).', '2026-10-18T08:59:18'),
+(499, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_DELETED', 'ROLE', '45', NULL, NULL, '{"role_code": "ROLE_TEST_1792306844", "role_name": "Credit Risk Inspector 1792306844"}', NULL, 'Deleted custom operational role ROLE_TEST_1792306844 (Credit Risk Inspector 1792306844).', '2026-10-18T08:59:21'),
+(500, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_DELETED', 'ROLE', '44', NULL, NULL, '{"role_code": "ROLE_TEST_1792306697", "role_name": "Credit Risk Inspector 1792306697"}', NULL, 'Deleted custom operational role ROLE_TEST_1792306697 (Credit Risk Inspector 1792306697).', '2026-10-18T08:59:25')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.audit_logs (id, user_id, actor_name, actor_role, action, resource_type, resource_id, ip_address, user_agent, details_before, details_after, summary, created_at) VALUES
+(501, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_DELETED', 'ROLE', '41', NULL, NULL, '{"role_code": "ROLE_TEST_1792301054", "role_name": "Credit Risk Inspector 1792301054"}', NULL, 'Deleted custom operational role ROLE_TEST_1792301054 (Credit Risk Inspector 1792301054).', '2026-10-18T09:02:57'),
+(502, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_DELETED', 'ROLE', '43', NULL, NULL, '{"role_code": "ROLE_TEST_1792304414", "role_name": "Credit Risk Inspector 1792304414"}', NULL, 'Deleted custom operational role ROLE_TEST_1792304414 (Credit Risk Inspector 1792304414).', '2026-10-18T09:03:02'),
+(503, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_DELETED', 'ROLE', '42', NULL, NULL, '{"role_code": "ROLE_TEST_1792304125", "role_name": "Credit Risk Inspector 1792304125"}', NULL, 'Deleted custom operational role ROLE_TEST_1792304125 (Credit Risk Inspector 1792304125).', '2026-10-18T09:03:05'),
+(504, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_DELETED', 'ROLE', '40', NULL, NULL, '{"role_code": "ROLE_TEST_1792259326", "role_name": "Credit Risk Inspector 1792259326"}', NULL, 'Deleted custom operational role ROLE_TEST_1792259326 (Credit Risk Inspector 1792259326).', '2026-10-18T09:03:10'),
+(505, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_DELETED', 'ROLE', '39', NULL, NULL, '{"role_code": "ROLE_TEST_1792257562", "role_name": "Credit Risk Inspector 1792257562"}', NULL, 'Deleted custom operational role ROLE_TEST_1792257562 (Credit Risk Inspector 1792257562).', '2026-10-18T09:03:16'),
+(506, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_DELETED', 'ROLE', '38', NULL, NULL, '{"role_code": "ROLE_TEST_1792255534", "role_name": "Credit Risk Inspector 1792255534"}', NULL, 'Deleted custom operational role ROLE_TEST_1792255534 (Credit Risk Inspector 1792255534).', '2026-10-18T09:03:21'),
+(507, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_DELETED', 'ROLE', '37', NULL, NULL, '{"role_code": "ROLE_TEST_1792255003", "role_name": "Credit Risk Inspector 1792255003"}', NULL, 'Deleted custom operational role ROLE_TEST_1792255003 (Credit Risk Inspector 1792255003).', '2026-10-18T09:03:44'),
+(508, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_DELETED', 'ROLE', '36', NULL, NULL, '{"role_code": "ROLE_TEST_1792237833", "role_name": "Credit Risk Inspector 1792237833"}', NULL, 'Deleted custom operational role ROLE_TEST_1792237833 (Credit Risk Inspector 1792237833).', '2026-10-18T09:03:52'),
+(509, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_DELETED', 'ROLE', '35', NULL, NULL, '{"role_code": "ROLE_TEST_1792236154", "role_name": "Credit Risk Inspector 1792236154"}', NULL, 'Deleted custom operational role ROLE_TEST_1792236154 (Credit Risk Inspector 1792236154).', '2026-10-18T09:03:57'),
+(510, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_DELETED', 'ROLE', '34', NULL, NULL, '{"role_code": "ROLE_TEST_1792236090", "role_name": "Credit Risk Inspector 1792236090"}', NULL, 'Deleted custom operational role ROLE_TEST_1792236090 (Credit Risk Inspector 1792236090).', '2026-10-18T09:04:01'),
+(511, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_DELETED', 'ROLE', '33', NULL, NULL, '{"role_code": "ROLE_TEST_1792236054", "role_name": "Credit Risk Inspector 1792236054"}', NULL, 'Deleted custom operational role ROLE_TEST_1792236054 (Credit Risk Inspector 1792236054).', '2026-10-18T09:04:05'),
+(512, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_DELETED', 'ROLE', '32', NULL, NULL, '{"role_code": "ROLE_TEST_1792235975", "role_name": "Credit Risk Inspector 1792235975"}', NULL, 'Deleted custom operational role ROLE_TEST_1792235975 (Credit Risk Inspector 1792235975).', '2026-10-18T09:04:09'),
+(513, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_DELETED', 'ROLE', '31', NULL, NULL, '{"role_code": "ROLE_TEST_1792235918", "role_name": "Credit Risk Inspector 1792235918"}', NULL, 'Deleted custom operational role ROLE_TEST_1792235918 (Credit Risk Inspector 1792235918).', '2026-10-18T09:04:53'),
+(514, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_DELETED', 'ROLE', '30', NULL, NULL, '{"role_code": "ROLE_TEST_1792235813", "role_name": "Credit Risk Inspector 1792235813"}', NULL, 'Deleted custom operational role ROLE_TEST_1792235813 (Credit Risk Inspector 1792235813).', '2026-10-18T09:05:47'),
+(515, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_DELETED', 'ROLE', '29', NULL, NULL, '{"role_code": "ROLE_TEST_1792235753", "role_name": "Credit Risk Inspector 1792235753"}', NULL, 'Deleted custom operational role ROLE_TEST_1792235753 (Credit Risk Inspector 1792235753).', '2026-10-18T09:05:54'),
+(516, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_DELETED', 'ROLE', '26', NULL, NULL, '{"role_code": "ROLE_TEST_1792234568", "role_name": "Credit Risk Inspector 1792234568"}', NULL, 'Deleted custom operational role ROLE_TEST_1792234568 (Credit Risk Inspector 1792234568).', '2026-10-18T09:05:59'),
+(517, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_DELETED', 'ROLE', '28', NULL, NULL, '{"role_code": "ROLE_TEST_1792235727", "role_name": "Credit Risk Inspector 1792235727"}', NULL, 'Deleted custom operational role ROLE_TEST_1792235727 (Credit Risk Inspector 1792235727).', '2026-10-18T09:06:02'),
+(518, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_DELETED', 'ROLE', '24', NULL, NULL, '{"role_code": "ROLE_TEST_1792233354", "role_name": "Credit Risk Inspector 1792233354"}', NULL, 'Deleted custom operational role ROLE_TEST_1792233354 (Credit Risk Inspector 1792233354).', '2026-10-18T09:06:27'),
+(519, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_DELETED', 'ROLE', '23', NULL, NULL, '{"role_code": "ROLE_TEST_1792233291", "role_name": "Credit Risk Inspector 1792233291"}', NULL, 'Deleted custom operational role ROLE_TEST_1792233291 (Credit Risk Inspector 1792233291).', '2026-10-18T09:06:32'),
+(520, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_DELETED', 'ROLE', '21', NULL, NULL, '{"role_code": "CREDIT_INSPECTOR_V2", "role_name": "Credit Risk & Field Inspector"}', NULL, 'Deleted custom operational role CREDIT_INSPECTOR_V2 (Credit Risk & Field Inspector).', '2026-10-18T09:06:36'),
+(521, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_DELETED', 'ROLE', '22', NULL, NULL, '{"role_code": "ROLE_TEST_1792233244", "role_name": "Credit Risk Inspector 1792233244"}', NULL, 'Deleted custom operational role ROLE_TEST_1792233244 (Credit Risk Inspector 1792233244).', '2026-10-18T09:06:39'),
+(522, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_DELETED', 'ROLE', '25', NULL, NULL, '{"role_code": "ROLE_TEST_1792234319", "role_name": "Credit Risk Inspector 1792234319"}', NULL, 'Deleted custom operational role ROLE_TEST_1792234319 (Credit Risk Inspector 1792234319).', '2026-10-18T09:06:44'),
+(523, 1, 'Administrator', 'SUPER_ADMIN', 'ROLE_DELETED', 'ROLE', '27', NULL, NULL, '{"role_code": "ROLE_TEST_1792235630", "role_name": "Credit Risk Inspector 1792235630"}', NULL, 'Deleted custom operational role ROLE_TEST_1792235630 (Credit Risk Inspector 1792235630).', '2026-10-18T09:06:47'),
+(524, 1, 'Finance Desk', 'FINANCIAL_SECRETARY', 'JOURNAL_ENTRY_POSTED', 'JOURNAL_ENTRY', 'JE-20261025-E0896837', NULL, NULL, NULL, '{"id": 258, "status": "POSTED", "narration": "Balanced test journal entry", "entry_date": "2026-10-25", "is_balanced": true, "lines_count": 2, "total_debit": 25000.0, "entry_number": "JE-20261025-E0896837", "total_credit": 25000.0, "source_module": "MANUAL_JOURNAL", "source_reference": "TEST-BAL-1792935910"}', 'Journal entry JE-20261025-E0896837 (POSTED) recorded: NGN 25,000.00.', '2026-10-25T14:45:10'),
+(525, 2, 'Finance Desk', 'FINANCIAL_SECRETARY', 'JOURNAL_ENTRY_DRAFTED', 'JOURNAL_ENTRY', 'JE-20261025-9A494C77', NULL, NULL, NULL, '{"id": 259, "status": "DRAFT", "narration": "Monthly Cloud Database Hosting & Maintenance Invoice", "entry_date": "2026-10-25", "is_balanced": true, "lines_count": 2, "total_debit": 15000.0, "entry_number": "JE-20261025-9A494C77", "total_credit": 15000.0, "source_module": "MANUAL_JOURNAL", "source_reference": "MAN-DRAFT-2A8AE9"}', 'Journal entry JE-20261025-9A494C77 (DRAFT) recorded: NGN 15,000.00.', '2026-10-25T14:45:10'),
+(526, 1, 'PRESIDENT', 'PRESIDENT', 'JOURNAL_ENTRY_POSTED', 'JOURNAL_ENTRY', 'JE-20261025-9A494C77', NULL, NULL, '{"status": "DRAFT"}', '{"status": "POSTED", "approved_by": 1}', 'Journal entry JE-20261025-9A494C77 was POSTED by PRESIDENT.', '2026-10-25T14:45:10'),
+(527, 1, 'Finance Desk', 'FINANCIAL_SECRETARY', 'DIVIDEND_PERIOD_SIMULATED', 'DIVIDEND_PERIOD', '8', NULL, NULL, NULL, '{"net_surplus": 500000.0, "period_name": "FY2026 Official Dividend Run"}', 'Created dividend distribution draft #8 (FY2026 Official Dividend Run) for audit review.', '2026-10-25T14:45:11'),
+(528, 1, 'PRESIDENT', 'PRESIDENT', 'DIVIDEND_DISTRIBUTION_POSTED', 'DIVIDEND_PERIOD', '8', NULL, NULL, '{"status": "AUDIT_REVIEW"}', '{"status": "APPROVED_POSTED", "tot_bank_payouts": 0.0, "statutory_reserve": 250000.0, "tot_savings_credits": 249999.98}', 'Approved & posted annual dividend #8. Savings Credited: NGN 249,999.98, Bank Payouts: NGN 0.00.', '2026-10-25T14:45:11')
+ON CONFLICT DO NOTHING;
+
+SELECT setval(pg_get_serial_sequence('public.audit_logs', 'id'), COALESCE((SELECT MAX(id) FROM public.audit_logs), 1), true);
+
+-- ---------------------------------------------------------------------
+-- Table: manual_bank_payments (19 records)
+-- ---------------------------------------------------------------------
+INSERT INTO public.manual_bank_payments (id, member_id, amount, payment_date, bank_name, payment_reference, narration, receipt_file_path, receipt_mime_type, status, verified_by_officer_id, verified_at, rejection_reason, distribution_json, created_at) VALUES
+(1, 2, 25000.00, '2026-10-17', 'Polaris Bank Limited', 'POLARIS-DEP-1792235755', 'Direct branch cash deposit via Odogunyan Polaris Bank branch', '/uploads/receipts/polaris_teller_0099.jpg', NULL, 'VERIFIED', 1, '2026-10-17T12:15:55', NULL, '{}', '2026-10-17T12:15:55'),
+(2, 2, 25000.00, '2026-10-17', 'Polaris Bank Limited', 'POLARIS-DEP-1792235919', 'Direct branch cash deposit via Odogunyan Polaris Bank branch', '/uploads/receipts/polaris_teller_0099.jpg', NULL, 'VERIFIED', 1, '2026-10-17T12:18:39', NULL, '{}', '2026-10-17T12:18:39'),
+(3, 2, 25000.00, '2026-10-17', 'Polaris Bank Limited', 'POLARIS-DEP-1792235977', 'Direct branch cash deposit via Odogunyan Polaris Bank branch', '/uploads/receipts/polaris_teller_0099.jpg', NULL, 'VERIFIED', 1, '2026-10-17T12:19:37', NULL, '{}', '2026-10-17T12:19:37'),
+(4, 2, 25000.00, '2026-10-17', 'Polaris Bank Limited', 'POLARIS-DEP-1792236055', 'Direct branch cash deposit via Odogunyan Polaris Bank branch', '/uploads/receipts/polaris_teller_0099.jpg', NULL, 'VERIFIED', 1, '2026-10-17T12:20:55', NULL, '{}', '2026-10-17T12:20:55'),
+(5, 2, 25000.00, '2026-10-17', 'Polaris Bank Limited', 'POLARIS-DEP-1792236092', 'Direct branch cash deposit via Odogunyan Polaris Bank branch', '/uploads/receipts/polaris_teller_0099.jpg', NULL, 'VERIFIED', 1, '2026-10-17T12:21:32', NULL, '{}', '2026-10-17T12:21:32'),
+(6, 2, 25000.00, '2026-10-17', 'Polaris Bank Limited', 'POLARIS-DEP-1792236155', 'Direct branch cash deposit via Odogunyan Polaris Bank branch', '/uploads/receipts/polaris_teller_0099.jpg', NULL, 'VERIFIED', 1, '2026-10-17T12:22:35', NULL, '{}', '2026-10-17T12:22:35'),
+(7, 2, 25000.00, '2026-10-17', 'Polaris Bank Limited', 'POLARIS-DEP-1792237835', 'Direct branch cash deposit via Odogunyan Polaris Bank branch', '/uploads/receipts/polaris_teller_0099.jpg', NULL, 'VERIFIED', 1, '2026-10-17T12:50:35', NULL, '{}', '2026-10-17T12:50:35'),
+(8, 2, 25000.00, '2026-10-17', 'Polaris Bank Limited', 'POLARIS-DEP-1792255004', 'Direct branch cash deposit via Odogunyan Polaris Bank branch', '/uploads/receipts/polaris_teller_0099.jpg', NULL, 'VERIFIED', 1, '2026-10-17T17:36:44', NULL, '{}', '2026-10-17T17:36:44'),
+(9, 2, 25000.00, '2026-10-17', 'Polaris Bank Limited', 'POLARIS-DEP-1792255535', 'Direct branch cash deposit via Odogunyan Polaris Bank branch', '/uploads/receipts/polaris_teller_0099.jpg', NULL, 'VERIFIED', 1, '2026-10-17T17:45:35', NULL, '{}', '2026-10-17T17:45:35'),
+(10, 2, 25000.00, '2026-10-17', 'Polaris Bank Limited', 'POLARIS-DEP-1792257563', 'Direct branch cash deposit via Odogunyan Polaris Bank branch', '/uploads/receipts/polaris_teller_0099.jpg', NULL, 'VERIFIED', 1, '2026-10-17T18:19:23', NULL, '{}', '2026-10-17T18:19:23'),
+(11, 2, 25000.00, '2026-10-17', 'Polaris Bank Limited', 'POLARIS-DEP-1792259332', 'Direct branch cash deposit via Odogunyan Polaris Bank branch', '/uploads/receipts/polaris_teller_0099.jpg', NULL, 'VERIFIED', 1, '2026-10-17T18:48:52', NULL, '{}', '2026-10-17T18:48:52'),
+(12, 2, 25000.00, '2026-10-17', 'Polaris Bank Limited', 'POLARIS-DEP-1792301056', 'Direct branch cash deposit via Odogunyan Polaris Bank branch', '/uploads/receipts/polaris_teller_0099.jpg', NULL, 'VERIFIED', 1, '2026-10-18T06:24:16', NULL, '{}', '2026-10-18T06:24:16'),
+(13, 2, 25000.00, '2026-10-17', 'Polaris Bank Limited', 'POLARIS-DEP-1792304125', 'Direct branch cash deposit via Odogunyan Polaris Bank branch', '/uploads/receipts/polaris_teller_0099.jpg', NULL, 'PENDING_RECONCILIATION', NULL, NULL, NULL, NULL, '2026-10-18T07:15:25'),
+(14, 2, 25000.00, '2026-10-17', 'Polaris Bank Limited', 'POLARIS-DEP-1792304414', 'Direct branch cash deposit via Odogunyan Polaris Bank branch', '/uploads/receipts/polaris_teller_0099.jpg', NULL, 'VERIFIED', 1, '2026-10-18T07:20:15', NULL, '{}', '2026-10-18T07:20:14'),
+(15, 2, 25000.00, '2026-10-17', 'Polaris Bank Limited', 'POLARIS-DEP-1792306698', 'Direct branch cash deposit via Odogunyan Polaris Bank branch', '/uploads/receipts/polaris_teller_0099.jpg', NULL, 'VERIFIED', 1, '2026-10-18T07:58:18', NULL, '{}', '2026-10-18T07:58:18'),
+(16, 2, 25000.00, '2026-10-17', 'Polaris Bank Limited', 'POLARIS-DEP-1792306845', 'Direct branch cash deposit via Odogunyan Polaris Bank branch', '/uploads/receipts/polaris_teller_0099.jpg', NULL, 'VERIFIED', 1, '2026-10-18T08:00:45', NULL, '{}', '2026-10-18T08:00:45'),
+(17, 2, 25000.00, '2026-10-17', 'Polaris Bank Limited', 'POLARIS-DEP-1792306946', 'Direct branch cash deposit via Odogunyan Polaris Bank branch', '/uploads/receipts/polaris_teller_0099.jpg', NULL, 'VERIFIED', 1, '2026-10-18T08:02:26', NULL, '{}', '2026-10-18T08:02:26'),
+(18, 2, 25000.00, '2026-10-17', 'Polaris Bank Limited', 'POLARIS-DEP-1792308376', 'Direct branch cash deposit via Odogunyan Polaris Bank branch', '/uploads/receipts/polaris_teller_0099.jpg', NULL, 'VERIFIED', 1, '2026-10-18T08:26:16', NULL, '{}', '2026-10-18T08:26:16'),
+(19, 2, 25000.00, '2026-10-17', 'Polaris Bank Limited', 'POLARIS-DEP-1792310221', 'Direct branch cash deposit via Odogunyan Polaris Bank branch', '/uploads/receipts/polaris_teller_0099.jpg', NULL, 'VERIFIED', 1, '2026-10-18T08:57:01', NULL, '{}', '2026-10-18T08:57:01')
+ON CONFLICT DO NOTHING;
+
+SELECT setval(pg_get_serial_sequence('public.manual_bank_payments', 'id'), COALESCE((SELECT MAX(id) FROM public.manual_bank_payments), 1), true);
+
+-- ---------------------------------------------------------------------
+-- Table: paystack_webhook_logs (4 records)
+-- ---------------------------------------------------------------------
+INSERT INTO public.paystack_webhook_logs (id, event_type, reference, member_id, amount, channel, payload, status, created_at) VALUES
+(1, 'charge.success', 'TEST-PST-WEBHOOK-1792017672492', 1, 5000.00, 'paystack_dva', '{"amount": 500000, "customer": {"email": "wealthbridge.coopsociety@gmail.com", "customer_code": "CUS_test_001"}, "reference": "TEST-PST-WEBHOOK-1792017672492", "dedicated_account": {"account_number": "9926000001"}}', 'PROCESSED', '2026-10-14T23:41:12'),
+(2, 'charge.success', 'TEST-PST-WEBHOOK-1792067608989', 1, 5000.00, 'paystack_dva', '{"amount": 500000, "customer": {"email": "wealthbridge.coopsociety@gmail.com", "customer_code": "CUS_test_001"}, "reference": "TEST-PST-WEBHOOK-1792067608989", "dedicated_account": {"account_number": "9926000001"}}', 'PROCESSED', '2026-10-15T13:33:29'),
+(3, 'charge.success', 'TEST-PST-WEBHOOK-1792068177841', 1, 5000.00, 'paystack_dva', '{"amount": 500000, "customer": {"email": "wealthbridge.coopsociety@gmail.com", "customer_code": "CUS_test_001"}, "reference": "TEST-PST-WEBHOOK-1792068177841", "dedicated_account": {"account_number": "9926000001"}}', 'PROCESSED', '2026-10-15T13:42:57'),
+(4, 'charge.success', 'TEST-PST-WEBHOOK-1792070791717', 1, 5000.00, 'paystack_dva', '{"amount": 500000, "customer": {"email": "wealthbridge.coopsociety@gmail.com", "customer_code": "CUS_test_001"}, "reference": "TEST-PST-WEBHOOK-1792070791717", "dedicated_account": {"account_number": "9926000001"}}', 'PROCESSED', '2026-10-15T14:26:31')
+ON CONFLICT DO NOTHING;
+
+SELECT setval(pg_get_serial_sequence('public.paystack_webhook_logs', 'id'), COALESCE((SELECT MAX(id) FROM public.paystack_webhook_logs), 1), true);

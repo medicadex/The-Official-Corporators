@@ -34,7 +34,8 @@ class IdCardPdfService:
     def generate_id_card_pdf(
         cls,
         member: Dict[str, Any],
-        system_config: Optional[Dict[str, str]] = None
+        system_config: Optional[Dict[str, str]] = None,
+        signatories: Optional[Dict[str, Any]] = None
     ) -> bytes:
         """
         Builds an official print-and-cut cooperative membership ID card sheet (Letter size)
@@ -254,20 +255,61 @@ class IdCardPdfService:
             ("RIGHTPADDING", (0, 0), (-1, -1), 2),
         ]))
 
+        if signatories is None:
+            try:
+                from wbmf_db import WealthbridgeDB
+                signatories = WealthbridgeDB().get_active_signatories()
+            except Exception:
+                signatories = {
+                    "president": {"name": "Qazeem Adebowale", "title": "President & Chairman", "signature_path": ""},
+                    "general_secretary": {"name": "Olaleke Olaoye", "title": "General Secretary", "signature_path": ""}
+                }
+
+        pres_data = signatories.get("president", {})
+        sec_data = signatories.get("general_secretary", {})
+        pres_name = pres_data.get("name", "Qazeem Adebowale")
+        pres_title = pres_data.get("title", "President & Chairman")
+        pres_sig_img = pres_data.get("signature_path", "")
+
+        sec_name = sec_data.get("name", "Olaleke Olaoye")
+        sec_title = sec_data.get("title", "General Secretary")
+        sec_sig_img = sec_data.get("signature_path", "")
+
         # Dual Signatures & Seal Row
         sig_d = Drawing(card_w - 12, 28)
         # Gold underline separator
         sig_d.add(Line(0, 27, card_w - 12, 27, strokeColor=colors.HexColor("#CBD5E1"), strokeWidth=0.5))
-        # Left signature: General Secretary
-        sig_d.add(String(5, 14, "Olusegun O.", fontName="Times-Italic", fontSize=10, fillColor=colors.HexColor("#1E3A8A")))
-        sig_d.add(String(5, 4, "General Secretary", fontName="Helvetica", fontSize=5.5, fillColor=c_slate))
+        
+        # Left signature: General Secretary (Dynamic image or cursive script)
+        sec_sig_drawn = False
+        if sec_sig_img and os.path.exists(sec_sig_img):
+            try:
+                from reportlab.graphics.shapes import Image as DImage
+                sig_d.add(DImage(5, 10, 50, 15, sec_sig_img))
+                sec_sig_drawn = True
+            except Exception:
+                pass
+        if not sec_sig_drawn:
+            sig_d.add(String(5, 14, sec_name, fontName="Times-Italic", fontSize=9, fillColor=colors.HexColor("#1E3A8A")))
+        sig_d.add(String(5, 4, sec_title, fontName="Helvetica", fontSize=5.5, fillColor=c_slate))
+
         # Center: Official Seal Badge
         sig_d.add(Circle(card_w / 2 - 6, 14, 11, fillColor=colors.HexColor("#FEF3C7"), strokeColor=c_gold, strokeWidth=1))
         sig_d.add(String(card_w / 2 - 6, 12, "★ WMC ★", fontName="Helvetica-Bold", fontSize=5, textAnchor="middle", fillColor=c_navy))
         sig_d.add(String(card_w / 2 - 6, 6, "SEAL", fontName="Helvetica-Bold", fontSize=4, textAnchor="middle", fillColor=c_gold))
-        # Right signature: President Dual Sign-Off
-        sig_d.add(String(card_w - 20, 14, "Qazeem Adebowale", fontName="Times-Italic", fontSize=10, textAnchor="end", fillColor=colors.HexColor("#1E3A8A")))
-        sig_d.add(String(card_w - 20, 4, "President / Board Chair", fontName="Helvetica", fontSize=5.5, textAnchor="end", fillColor=c_slate))
+
+        # Right signature: President Dual Sign-Off (Dynamic image or cursive script)
+        pres_sig_drawn = False
+        if pres_sig_img and os.path.exists(pres_sig_img):
+            try:
+                from reportlab.graphics.shapes import Image as DImage
+                sig_d.add(DImage(card_w - 65, 10, 50, 15, pres_sig_img))
+                pres_sig_drawn = True
+            except Exception:
+                pass
+        if not pres_sig_drawn:
+            sig_d.add(String(card_w - 20, 14, pres_name, fontName="Times-Italic", fontSize=9, textAnchor="end", fillColor=colors.HexColor("#1E3A8A")))
+        sig_d.add(String(card_w - 20, 4, pres_title, fontName="Helvetica", fontSize=5.5, textAnchor="end", fillColor=c_slate))
 
         front_card_table = Table(
             [
